@@ -7,6 +7,7 @@ A hard fork of the desktop shell that started in zegadb/earth (#6 sign-in, #13 g
 - Design: zegadb/aps APS 31 (desktop) and APS 29 (search results and Search Transparency).
 - Mock: landing, grouped results, floating search.
 - Local first: the computer graph lives on this machine and never leaves it.
+- Recent files come from the local Spotlight index and are limited to the last seven days. Settings links use pane identifiers discovered from installed macOS settings bundles. Photos remain a placeholder.
 
 Agents: read `~/Projects/AGENTS.md` (bugsy) or `/Volumes/Projects/AGENTS.md` (iMac) first.
 

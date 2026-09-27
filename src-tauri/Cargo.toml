@@ -22,3 +22,4 @@ sha2 = "0.10"
 getrandom = "0.2"
 zeroize = { version = "1", features = ["derive"] }
 tauri-plugin-opener = "2"
+plist = "1"

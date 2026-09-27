@@ -1,4 +1,5 @@
 mod account;
+mod local;
 mod loopback;
 
 use account::AccountState;
@@ -14,8 +15,13 @@ pub fn run() {
             account::account_cancel,
             account::account_status,
             account::account_signout,
+            local::local_recent_files,
+            local::local_settings_panes,
+            local::open_local_file,
+            local::open_settings_pane,
         ])
         .setup(|app| {
+            app.manage(local::SettingsIndex::discover());
             let handle = app.handle().clone();
             let state = AccountState::new(handle).map_err(|error| error.to_string())?;
             app.manage(Arc::new(state));

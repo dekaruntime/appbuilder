@@ -27,6 +27,20 @@ test('desktop auth uses the loopback account commands', () => {
   assert.match(native, /dev\.zega\.desktop/);
 });
 
+test('computer data comes from local Spotlight and machine-discovered settings panes', () => {
+  const page = readFileSync('src/app/page.tsx', 'utf8');
+  const local = readFileSync('src-tauri/src/local.rs', 'utf8').split('#[cfg(test)]')[0];
+  assert.match(page, /invoke<LocalFile\[]>\('local_recent_files'\)/);
+  assert.match(page, /invoke<LocalPane\[]>\('local_settings_panes'\)/);
+  assert.match(page, /open_settings_pane/);
+  assert.match(page, /Preview placeholder/);
+  assert.match(local, /kMDItemContentModificationDate >= \$time\.now\(-604800\)/);
+  assert.match(local, /\.arg\("-onlyin"\)/);
+  assert.match(local, /Value::from_file\(info\)/);
+  assert.match(local, /x-apple\.systempreferences:/);
+  assert.doesNotMatch(local, /com\.apple\.preference\.(network|sound|displays)/);
+});
+
 test('MapLibre uses the same-origin module worker and its adjacent shared chunk', () => {
   const config = readFileSync('src/lib/maplibre-worker.ts', 'utf8');
   const worker = readFileSync('out/globe/maplibre-gl-worker.mjs', 'utf8');
