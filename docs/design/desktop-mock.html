@@ -1,0 +1,376 @@
+<title>zega computer</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --bg: #F5F7F6; --win: #FFFFFF; --ink: #0E1A16; --soft: #56645E; --edge: #D6E0DB; --panel: #FFFFFF; --tint: #EEF3F1;
+    --accent: #0C8B43; --accent-soft: #DFEFE4; --link: #1A5FB4;
+    --var-bg: #C9D8F2; --var-ink: #16345F; /* the highlighted variable: looks like a text selection */
+    --desk-a: #6E8FB3; --desk-b: #C7B08A; --shadow: 0 30px 80px rgba(10, 20, 30, .28), 0 4px 14px rgba(10, 20, 30, .12);
+    --sans: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #0B0F14; --win: #12181F; --ink: #EEF3F0; --soft: #9AA8A3; --edge: #243039; --panel: #161E26; --tint: #1A232C;
+    --accent: #3CCB77; --accent-soft: #123320; --link: #8AB4F8; --var-bg: #3E567D; --var-ink: #E6EEFB; --desk-a: #1E3350; --desk-b: #4A3B28;
+  } }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #0B0F14; --win: #12181F; --ink: #EEF3F0; --soft: #9AA8A3; --edge: #243039; --panel: #161E26; --tint: #1A232C;
+    --accent: #3CCB77; --accent-soft: #123320; --link: #8AB4F8; --var-bg: #3E567D; --var-ink: #E6EEFB; --desk-a: #1E3350; --desk-b: #4A3B28;
+  }
+  html, body { background: var(--bg); }
+  body { margin: 0; color: var(--ink); font: 14px/1.5 var(--sans); padding-inline: 16px; }
+  button { font: inherit; color: inherit; cursor: pointer; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .intro { max-width: 1180px; margin: 22px auto 14px; display: flex; flex-wrap: wrap; gap: 14px; align-items: center; justify-content: space-between; }
+  .intro h1 { margin: 0; font: 600 18px var(--sans); }
+  .intro p { margin: 2px 0 0; color: var(--soft); font-size: 13px; max-width: 60ch; }
+  .seg { display: inline-flex; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; padding: 3px; gap: 2px; }
+  .seg button { border: 0; background: transparent; padding: 6px 14px; border-radius: 999px; font-size: 13px; color: var(--soft); }
+  .seg button[aria-pressed="true"] { background: var(--ink); color: var(--win); }
+
+  /* the highlighted variable: the graph's name, like a text selection */
+  .v { background: var(--var-bg); color: var(--var-ink); border-radius: 4px; padding: 0 .18em; margin: 0 -.02em; transition: background .2s; }
+  .v.flash { animation: flash .5s ease; }
+  @keyframes flash { 0% { background: var(--accent); } 100% { background: var(--var-bg); } }
+
+  /* macOS window */
+  .stage { max-width: 1180px; margin: 0 auto 28px; }
+  .window { background: var(--win); border: 1px solid var(--edge); border-radius: 12px; box-shadow: var(--shadow); overflow: hidden; }
+  .titlebar { height: 38px; display: flex; align-items: center; gap: 8px; padding: 0 14px; border-bottom: 1px solid var(--edge); background: var(--tint); }
+  .lights { display: flex; gap: 8px; } .lights i { width: 12px; height: 12px; border-radius: 50%; display: block; }
+  .lights i:nth-child(1) { background: #FF5F57; } .lights i:nth-child(2) { background: #FEBC2E; } .lights i:nth-child(3) { background: #28C840; }
+  .tb-word { margin-left: 14px; font: 700 15px var(--sans); letter-spacing: -.03em; }
+  .tb-sp { flex: 1; }
+  .tb-me { width: 22px; height: 22px; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #f3c08a 0 30%, #e39a3c 31%); }
+
+  .app { display: grid; grid-template-columns: 50px minmax(0, 1fr); min-height: 620px; }
+  .rail { display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; border-right: 1px solid var(--edge); background: var(--tint); }
+  .rail button { width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--edge); background: var(--panel); position: relative; transition: border-radius .15s; }
+  .rail button:hover { border-radius: 9px; }
+  .rail button[aria-pressed="true"] { border-radius: 9px; background: var(--ink); color: var(--win); border-color: var(--ink); }
+  .rail button[aria-pressed="true"]::before { content: ""; position: absolute; left: -11px; width: 3px; height: 16px; border-radius: 0 3px 3px 0; background: var(--ink); }
+  .rail hr { width: 20px; border: 0; border-top: 1px solid var(--edge); margin: 2px 0; }
+
+  .content { min-width: 0; }
+  .screen[hidden] { display: none !important; }
+
+  /* search box (shared) */
+  .search { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; padding: 4px 5px 4px 16px; }
+  .search .ph { flex: 1; min-width: 0; font-size: 15px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .search .ph.typed { color: var(--ink); }
+  .round { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--edge); background: var(--panel); flex: none; }
+  .round.go { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .kbd { font: 500 11px var(--mono); color: var(--soft); border: 1px solid var(--edge); border-radius: 5px; padding: 1px 6px; background: var(--tint); }
+
+  /* 1. landing */
+  .landing { padding: 56px 40px 36px; display: grid; gap: 34px; justify-items: center; }
+  .landing .hello { text-align: center; display: grid; gap: 8px; }
+  .landing .hello h2 { margin: 0; font: 600 26px var(--sans); letter-spacing: -.02em; }
+  .landing .hello p { margin: 0; color: var(--soft); }
+  .landing .search { width: min(640px, 100%); padding: 6px 6px 6px 18px; }
+  .landing .search .ph { font-size: 17px; }
+  .shelves { width: min(900px, 100%); display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 28px; }
+  .shelf h3 { margin: 0 0 10px; font: 600 13px var(--sans); color: var(--soft); display: flex; justify-content: space-between; }
+  .shelf h3 a { color: var(--link); font-weight: 500; text-decoration: none; }
+  .rows { display: grid; }
+  .row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 6px; border-radius: 8px; }
+  .row:hover { background: var(--tint); }
+  .row .fi { width: 28px; height: 32px; border-radius: 4px; display: grid; place-items: center; font: 700 8.5px var(--mono); color: #fff; }
+  .fi.pdf { background: #D6453D; } .fi.key { background: #2F7BD8; } .fi.xls { background: #1F8A4C; } .fi.doc { background: #3D5AFE; } .fi.fig { background: #8E44AD; } .fi.txt { background: #6B7780; }
+  .row b { font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .row small { color: var(--soft); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+  .row .when { color: var(--soft); font-size: 12px; white-space: nowrap; }
+  .photos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .ph-tile { aspect-ratio: 1; border-radius: 8px; position: relative; overflow: hidden; }
+  .ph-tile span { position: absolute; left: 6px; bottom: 5px; font: 500 10px var(--sans); color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
+  .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+  .quick button { display: inline-flex; align-items: center; gap: 7px; border: 1px solid var(--edge); background: var(--panel); border-radius: 999px; padding: 6px 12px; font-size: 13px; }
+
+  /* 2. results */
+  .res-top { display: flex; align-items: center; gap: 16px; padding: 14px 26px; border-bottom: 1px solid var(--edge); }
+  .res-top .search { flex: 1 1 auto; max-width: 620px; }
+  .kinds { display: flex; gap: 22px; padding: 10px 26px 0; border-bottom: 1px solid var(--edge); font-size: 13.5px; color: var(--soft); overflow-x: auto; }
+  .kinds span { padding: 6px 0 10px; border-bottom: 3px solid transparent; white-space: nowrap; }
+  .kinds span.on { color: var(--ink); border-color: var(--ink); font-weight: 600; }
+  .kinds span em { font-style: normal; color: var(--soft); font-weight: 400; margin-left: 4px; font-size: 12px; }
+  .res { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 300px); gap: 30px; padding: 20px 26px 30px; }
+  .groups { display: grid; gap: 26px; align-content: start; min-width: 0; }
+  .grp h3 { margin: 0 0 10px; font: 600 14px var(--sans); display: flex; justify-content: space-between; align-items: baseline; }
+  .grp h3 small { color: var(--soft); font-weight: 400; font-size: 12.5px; }
+  .grp h3 a { font: 500 12.5px var(--sans); color: var(--link); text-decoration: none; }
+  .top-hit { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 16px; padding: 12px; border: 1px solid var(--edge); border-radius: 12px; background: var(--panel); }
+  .top-hit .ph-tile { aspect-ratio: 4 / 3; }
+  .top-hit b { font-size: 16px; font-weight: 600; } .top-hit p { margin: 4px 0 8px; color: var(--soft); font-size: 13px; }
+  .acts { display: flex; gap: 8px; flex-wrap: wrap; }
+  .acts button { border: 1px solid var(--edge); background: var(--tint); border-radius: 8px; padding: 4px 10px; font-size: 12.5px; }
+  .pgrid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
+  .setrow { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 6px; border-radius: 8px; }
+  .setrow:hover { background: var(--tint); }
+  .setrow .gear { width: 28px; height: 28px; border-radius: 7px; background: #8A8F98; display: grid; place-items: center; color: #fff; }
+  .setrow .open { font-size: 12px; color: var(--link); white-space: nowrap; }
+  .web .wr { padding: 6px 0; } .web .wr a { color: var(--link); text-decoration: none; font-size: 14.5px; } .web .wr small { display: block; color: var(--soft); font-size: 12px; }
+  .side { display: grid; gap: 16px; align-content: start; }
+  .card { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 14px 16px; }
+  .card h4 { margin: 0 0 10px; font: 600 13.5px var(--sans); display: flex; justify-content: space-between; }
+  .card h4 span { color: var(--soft); font-weight: 400; font-size: 12px; }
+
+  /* 3. launcher over the desktop */
+  .desk { position: relative; min-height: 620px; background: radial-gradient(120% 90% at 20% 10%, var(--desk-a), transparent 60%), radial-gradient(90% 80% at 90% 100%, var(--desk-b), transparent 60%), var(--bg); display: grid; justify-items: center; align-content: start; padding-top: 70px; }
+  .menubar { position: absolute; inset: 0 0 auto 0; height: 26px; display: flex; align-items: center; gap: 16px; padding: 0 14px; font-size: 12.5px; background: rgba(255,255,255,.35); backdrop-filter: blur(20px); color: #111; }
+  :root[data-theme="dark"] .menubar { background: rgba(0,0,0,.35); color: #eee; }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .menubar { background: rgba(0,0,0,.35); color: #eee; } }
+  .menubar .z { margin-left: auto; width: 20px; height: 18px; border-radius: 5px; display: grid; place-items: center; font: 700 12px var(--sans); background: rgba(255,255,255,.55); color: #111; outline: 2px solid rgba(12,139,67,.7); }
+  .launcher { width: min(680px, calc(100% - 32px)); background: color-mix(in srgb, var(--win) 88%, transparent); backdrop-filter: blur(30px); border: 1px solid var(--edge); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
+  .launcher .lhead { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--edge); }
+  .launcher .lhead .gi { width: 26px; height: 26px; border-radius: 8px; background: var(--ink); color: var(--win); display: grid; place-items: center; flex: none; }
+  .launcher .lhead .ph { flex: 1; font-size: 18px; }
+  .lres { padding: 8px; display: grid; gap: 2px; max-height: 420px; overflow: auto; }
+  .lsec { font: 600 11px var(--sans); color: var(--soft); text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px 4px; }
+  .lrow { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 7px 10px; border-radius: 9px; }
+  .lrow.sel { background: var(--var-bg); color: var(--var-ink); }
+  .lrow.sel small { color: inherit; opacity: .8; }
+  .lrow small { color: var(--soft); font-size: 12px; display: block; }
+  .lrow .hint { font: 500 11px var(--mono); color: var(--soft); }
+  .lrow.sel .hint { color: inherit; }
+  .lstrip { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; padding: 4px 10px 8px; }
+  .lfoot { display: flex; gap: 16px; flex-wrap: wrap; padding: 9px 16px; border-top: 1px solid var(--edge); font-size: 12px; color: var(--soft); background: var(--tint); }
+  .lfoot span { display: inline-flex; gap: 6px; align-items: center; }
+
+  .note { max-width: 1180px; margin: 0 auto 30px; font: 400 11.5px var(--mono); color: var(--soft); }
+
+  @media (max-width: 860px) {
+    .shelves, .res { grid-template-columns: minmax(0, 1fr); }
+    .landing { padding: 36px 18px; }
+    .pgrid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+    .top-hit { grid-template-columns: minmax(0, 1fr); }
+  }
+  @media (prefers-reduced-motion: reduce) { .v.flash { animation: none; } }
+
+  .rail .plus { font-size: 16px; line-height: 1; color: var(--soft); }
+  .addg { padding: 30px 34px 34px; display: grid; gap: 24px; }
+  .add-head h2 { margin: 0 0 4px; font: 600 22px var(--sans); }
+  .add-head p { margin: 0 0 14px; color: var(--soft); max-width: 70ch; }
+  .join { display: flex; align-items: center; gap: 10px; background: var(--panel); border: 1px dashed var(--edge); border-radius: 12px; padding: 6px 6px 6px 14px; max-width: 640px; }
+  .join .ph { flex: 1; color: var(--soft); font-size: 13.5px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .add-cols { display: grid; grid-template-columns: minmax(0, 1.25fr) minmax(0, 1fr); gap: 30px; }
+  .sub { margin: 0 0 10px; font: 600 13px var(--sans); color: var(--soft); }
+  .gcards { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .gcard { border: 1px solid var(--edge); background: var(--panel); border-radius: 12px; padding: 12px; display: grid; gap: 3px; align-content: start; }
+  .gcard .gi2 { width: 28px; height: 28px; border-radius: 8px; background: var(--tint); display: grid; place-items: center; margin-bottom: 4px; }
+  .gcard b { font-weight: 600; } .gcard small { color: var(--soft); } .gcard em { font-style: normal; font-size: 11.5px; color: var(--soft); }
+  .gcard button { justify-self: start; margin-top: 8px; border: 1px solid var(--edge); background: var(--tint); border-radius: 8px; padding: 4px 12px; font-size: 12.5px; }
+  .gcard button.on { color: var(--accent); }
+  .gcard button[disabled] { opacity: .6; cursor: default; }
+  .create { border: 1px solid var(--edge); background: var(--panel); border-radius: 14px; padding: 16px; display: grid; gap: 14px; align-content: start; }
+  .fld { display: grid; gap: 6px; } .fld > span:first-child { font-size: 12.5px; color: var(--soft); font-weight: 500; }
+  .inp { border: 1px solid var(--edge); border-radius: 9px; padding: 8px 12px; font-size: 15px; font-weight: 600; letter-spacing: -.02em; }
+  .opts { display: flex; flex-wrap: wrap; gap: 6px; }
+  .opts button { border: 1px solid var(--edge); background: transparent; border-radius: 999px; padding: 5px 12px; font-size: 13px; }
+  .opts button.sel, .where3 button.sel { border-color: var(--ink); background: var(--tint); font-weight: 600; }
+  .where3 { display: grid; gap: 6px; }
+  .where3 button { text-align: left; border: 1px solid var(--edge); background: transparent; border-radius: 10px; padding: 8px 12px; display: grid; }
+  .where3 small { color: var(--soft); font-weight: 400; font-size: 12px; }
+  .make { justify-self: start; border: 0; background: var(--accent); color: #fff; border-radius: 999px; padding: 8px 16px; font-weight: 600; }
+  .make .v { background: rgba(255,255,255,.25); color: #fff; }
+  @media (max-width: 860px) { .add-cols, .gcards { grid-template-columns: minmax(0, 1fr); } }
+</style>
+
+<div class="intro">
+  <div>
+    <h1>zega desktop</h1>
+    <p>The highlighted word is the graph you're in. Switch graphs on the left rail and only that word changes.</p>
+  </div>
+  <div class="seg" role="group" aria-label="Screen">
+    <button type="button" data-screen="landing" aria-pressed="true">Landing</button>
+    <button type="button" data-screen="results" aria-pressed="false">Search results</button>
+    <button type="button" data-screen="launcher" aria-pressed="false">Floating search</button>
+    <button type="button" data-screen="add" aria-pressed="false">+ Add a graph</button>
+  </div>
+</div>
+
+<div class="stage">
+  <!-- app window: landing + results -->
+  <div class="window" id="win">
+    <div class="titlebar"><span class="lights"><i></i><i></i><i></i></span><span class="tb-word">zega <span class="v" data-var>computer</span></span><span class="tb-sp"></span><span class="tb-me" aria-hidden="true"></span></div>
+    <div class="app">
+      <nav class="rail" aria-label="Graphs">
+        <button type="button" data-graph="computer" aria-pressed="true" title="computer" aria-label="computer"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></button>
+        <hr>
+        <button type="button" data-graph="earth" aria-pressed="false" title="earth" aria-label="earth"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></svg></button>
+        <button type="button" data-graph="hockey" aria-pressed="false" title="hockey" aria-label="hockey"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3 9.5 15.5c-.6 1.1-1.2 1.5-2.4 1.5H3v3h5.2c1.9 0 3-.6 3.9-2.3L19 4"/><ellipse cx="17.5" cy="19" rx="3.5" ry="1.4"/></svg></button>
+        <button type="button" data-graph="film" aria-pressed="false" title="film" aria-label="film"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="m3 8 2.5-4.5 4 1.5-2.5 4M10.5 6.5 14.5 8M16 9.5l2.5-4"/></svg></button>
+        <button type="button" class="plus" data-open="add" aria-label="Add a graph" title="Add a graph" style="margin-top:auto;border-style:dashed">+</button>
+      </nav>
+      <div class="content">
+        <!-- 1. landing -->
+        <section class="screen landing" data-for="landing" aria-label="Landing">
+          <div class="hello"><h2>Good afternoon, Sami</h2><p>Everything on this Mac, in one graph. Nothing leaves it.</p></div>
+          <div class="search" role="search"><span class="ph">Ask <span class="v" data-var>computer</span> anything…</span><span class="kbd">⌥ Space</span><button class="round" type="button" aria-label="Speak"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button class="round go" type="button" aria-label="Search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+          <div class="shelves">
+            <div class="shelf">
+              <h3>Recent files <a href="#files">All files</a></h3>
+              <div class="rows">
+                <div class="row"><span class="fi key">KEY</span><span><b>zega pitch — Sept.key</b><small>Documents › zega</small></span><span class="when">12 min ago</span></div>
+                <div class="row"><span class="fi pdf">PDF</span><span><b>Lisbon itinerary.pdf</b><small>Downloads</small></span><span class="when">Yesterday</span></div>
+                <div class="row"><span class="fi xls">XLS</span><span><b>Budget 2026.numbers</b><small>Documents › Money</small></span><span class="when">Tue</span></div>
+                <div class="row"><span class="fi fig">FIG</span><span><b>search results v10.fig</b><small>Desktop</small></span><span class="when">Mon</span></div>
+                <div class="row"><span class="fi txt">TXT</span><span><b>notes — desktop fork.md</b><small>Documents › zega</small></span><span class="when">Mon</span></div>
+              </div>
+            </div>
+            <div class="shelf">
+              <h3>Recent photos <a href="#photos">All photos</a></h3>
+              <div class="photos">
+                <div class="ph-tile" style="background:linear-gradient(135deg,#F0B35B,#C8553D)"><span>Sunset</span></div>
+                <div class="ph-tile" style="background:linear-gradient(135deg,#6FB1C9,#2E5E7E)"><span>Lisbon</span></div>
+                <div class="ph-tile" style="background:linear-gradient(135deg,#A7C38A,#4E7A43)"><span>Bow River</span></div>
+                <div class="ph-tile" style="background:linear-gradient(135deg,#D9D2C3,#8C7E68)"><span>Studio</span></div>
+                <div class="ph-tile" style="background:linear-gradient(135deg,#E3A9B5,#9B4F6B)"><span>Flowers</span></div>
+                <div class="ph-tile" style="background:linear-gradient(135deg,#9FB3D9,#44547E)"><span>Porto</span></div>
+                <div class="ph-tile" style="background:linear-gradient(135deg,#F2D68A,#C99A2E)"><span>Canola</span></div>
+                <div class="ph-tile" style="background:linear-gradient(135deg,#B9C4C9,#5F6B72)"><span>Snow</span></div>
+              </div>
+              <div class="quick" aria-label="Settings">
+                <button type="button">◐ Dark mode</button><button type="button">🔈 Sound</button><button type="button">▭ Displays</button><button type="button">⌁ Wi-Fi</button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 2. results -->
+        <section class="screen" data-for="results" aria-label="Search results" hidden>
+          <div class="res-top">
+            <div class="search" role="search"><span class="ph typed">lisbon trip</span><button class="round" type="button" aria-label="Speak"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button><button class="round go" type="button" aria-label="Search"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div>
+          </div>
+          <div class="kinds"><span class="on">All</span><span>Photos<em>142</em></span><span>Files<em>9</em></span><span>Mail<em>soon</em></span><span>Settings<em>1</em></span><span>Web</span></div>
+          <div class="res">
+            <div class="groups">
+              <div class="grp">
+                <h3>Top hit</h3>
+                <div class="top-hit"><div class="ph-tile" style="background:linear-gradient(135deg,#6FB1C9,#2E5E7E)"><span>Album</span></div>
+                  <div><b>Lisbon — May 2025</b><p>Album · 142 photos · 12–20 May 2025 · Lisbon, Sintra, Porto</p><div class="acts"><button type="button">Open in Photos</button><button type="button">Show on map</button><button type="button">⋮ Search Transparency</button></div></div></div>
+              </div>
+              <div class="grp">
+                <h3>Photos <small>142 · taken in Portugal, May 2025</small><a href="#p">See all</a></h3>
+                <div class="pgrid">
+                  <div class="ph-tile" style="background:linear-gradient(135deg,#6FB1C9,#2E5E7E)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#F0B35B,#C8553D)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#9FB3D9,#44547E)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#E6C9A8,#A0724A)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#8FC7B8,#3E7F6E)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#F2D68A,#C99A2E)"></div>
+                </div>
+              </div>
+              <div class="grp">
+                <h3>Files <small>9</small><a href="#f">See all</a></h3>
+                <div class="rows">
+                  <div class="row"><span class="fi pdf">PDF</span><span><b>Lisbon itinerary.pdf</b><small>Downloads · 2 pages</small></span><span class="when">Show in Finder</span></div>
+                  <div class="row"><span class="fi pdf">PDF</span><span><b>Boarding pass YYC–LIS.pdf</b><small>Documents › Travel</small></span><span class="when">Show in Finder</span></div>
+                  <div class="row"><span class="fi xls">XLS</span><span><b>Portugal costs.numbers</b><small>Documents › Money</small></span><span class="when">Show in Finder</span></div>
+                </div>
+              </div>
+              <div class="grp">
+                <h3>Settings <small>1</small></h3>
+                <div class="setrow"><span class="gear">⚙</span><span><b style="font-weight:500">Date &amp; Time — time zone</b><small style="color:var(--soft);font-size:12px">Set automatically while travelling</small></span><span class="open">Open in System Settings ↗</span></div>
+              </div>
+              <div class="grp web">
+                <h3>On the web <small>from zega search</small><a href="#w">More in <span class="v">earth</span></a></h3>
+                <div class="wr"><a href="#w1">Lisbon travel guide — Visit Portugal</a><small>visitportugal.com</small></div>
+                <div class="wr"><a href="#w2">Lisbon — Wikipedia</a><small>en.wikipedia.org</small></div>
+              </div>
+            </div>
+            <aside class="side" aria-label="Components">
+              <div class="card"><h4>Where <span>from photo locations</span></h4>
+                <svg viewBox="0 0 280 150" width="100%" role="img" aria-label="Map of Portugal with Lisbon, Sintra and Porto">
+                  <rect width="280" height="150" rx="10" fill="var(--tint)"/>
+                  <path d="M150 10 L 175 18 L 182 60 L 170 100 L 178 140 L 128 140 L 118 110 L 126 70 L 120 30 Z" fill="var(--accent-soft)" stroke="var(--accent)" stroke-width="1.2"/>
+                  <circle cx="132" cy="112" r="6" fill="var(--accent)"/><text x="100" y="128" font-size="11" fill="var(--ink)">Lisbon · 96</text>
+                  <circle cx="126" cy="104" r="4" fill="var(--accent)"/><text x="60" y="100" font-size="11" fill="var(--ink)">Sintra · 18</text>
+                  <circle cx="146" cy="34" r="5" fill="var(--accent)"/><text x="156" y="38" font-size="11" fill="var(--ink)">Porto · 28</text>
+                </svg>
+              </div>
+              <div class="card"><h4>When <span>12–20 May 2025</span></h4>
+                <svg viewBox="0 0 280 70" width="100%" role="img" aria-label="Photos per day during the trip">
+                  <g fill="var(--accent)"><rect x="10" y="40" width="22" height="20" rx="3"/><rect x="42" y="18" width="22" height="42" rx="3"/><rect x="74" y="28" width="22" height="32" rx="3"/><rect x="106" y="8" width="22" height="52" rx="3"/><rect x="138" y="36" width="22" height="24" rx="3"/><rect x="170" y="22" width="22" height="38" rx="3"/><rect x="202" y="44" width="22" height="16" rx="3"/><rect x="234" y="50" width="22" height="10" rx="3"/></g>
+                  <line x1="6" y1="60.5" x2="274" y2="60.5" stroke="var(--edge)"/>
+                </svg>
+              </div>
+            </aside>
+          </div>
+        </section>
+
+        <!-- 4. add a graph -->
+        <section class="screen addg" data-for="add" aria-label="Add a graph" hidden>
+          <div class="add-head"><h2>Add a graph</h2><p>Every graph is a git repository: its schema and data as text, its history as commits. Share it through zega hub, directly with peers, or keep it on this computer.</p>
+            <div class="join"><span class="ph">Paste a link — zega://hub.zega.earth/sami/westeros or any git URL</span><button class="round go" type="button" aria-label="Join"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button></div></div>
+          <div class="add-cols">
+            <div>
+              <h3 class="sub">Discover</h3>
+              <div class="gcards">
+                <div class="gcard"><span class="gi2">◍</span><b>earth</b><small>Flights, cities and places</small><em>by zega · 52k nodes · updated daily · CC0 + ODbL</em><button type="button" class="on">On your rail</button></div>
+                <div class="gcard"><span class="gi2">⌐</span><b>hockey</b><small>Teams, players, games, seasons</small><em>by zega · 18k nodes · live in season · CC0</em><button type="button" class="on">On your rail</button></div>
+                <div class="gcard"><span class="gi2">▭</span><b>film</b><small>Films, cast, box office</small><em>by zega · 5k nodes · weekly · CC0</em><button type="button" class="on">On your rail</button></div>
+                <div class="gcard"><span class="gi2">♞</span><b>westeros</b><small>Houses, characters, battles</small><em>by the community · 3k nodes · 12 contributors</em><button type="button">Add</button></div>
+                <div class="gcard"><span class="gi2">♪</span><b>music</b><small>Artists, albums, tours</small><em>by zega · 11k nodes · weekly · CC0</em><button type="button">Add</button></div>
+                <div class="gcard"><span class="gi2">✈</span><b>calgary-transit</b><small>Routes, stops, schedules</small><em>by @yyc-data · 9k nodes · daily</em><button type="button">Add</button></div>
+              </div>
+            </div>
+            <div class="create">
+              <h3 class="sub">Create your own</h3>
+              <label class="fld"><span>Name</span><span class="inp">zega <span class="v">trips</span></span></label>
+              <div class="fld"><span>Start from</span><div class="opts"><button type="button" class="sel">Empty</button><button type="button">Import files</button><button type="button">A topic</button></div></div>
+              <div class="fld"><span>Who can see it</span><div class="opts"><button type="button" class="sel">Only me</button><button type="button">Anyone with the link</button><button type="button">Public</button></div></div>
+              <div class="fld"><span>Where it lives</span>
+                <div class="where3">
+                  <button type="button" class="sel"><b>This computer</b><small>Private. Never leaves this Mac.</small></button>
+                  <button type="button"><b>zega hub</b><small>Syncs your devices; share by link. Always on.</small></button>
+                  <button type="button"><b>Peer-to-peer</b><small>Syncs directly between devices. No server.</small></button>
+                </div></div>
+              <button type="button" class="make">Create zega <span class="v">trips</span></button>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+  </div>
+
+  <!-- 3. floating search over the desktop -->
+  <div class="window screen" data-for="launcher" hidden>
+    <div class="desk">
+      <div class="menubar"><b></b><span>Finder</span><span>File</span><span>Edit</span><span>View</span><span class="z" title="zega in the menu bar">z</span><span>Mon 2:41 PM</span></div>
+      <div class="launcher" role="dialog" aria-label="zega floating search">
+        <div class="lhead"><span class="gi" aria-hidden="true"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="12" rx="2"/><path d="M8 20h8M12 16v4"/></svg></span><span class="ph typed">dark mo<span style="color:var(--soft)">de</span></span><span class="kbd">⇥ switch graph</span></div>
+        <div class="lres">
+          <div class="lsec">Top hit</div>
+          <div class="lrow sel"><span class="gear" style="width:26px;height:26px;border-radius:7px;background:#8A8F98;display:grid;place-items:center;color:#fff">◐</span><span><b style="font-weight:600">Turn on dark mode</b><small>Appearance · changes it now</small></span><span class="hint">↵</span></div>
+          <div class="lrow"><span class="gear" style="width:26px;height:26px;border-radius:7px;background:#8A8F98;display:grid;place-items:center;color:#fff">⚙</span><span><b style="font-weight:500">Appearance settings</b><small>Opens System Settings › Appearance</small></span><span class="hint">⌘1</span></div>
+          <div class="lsec">Files</div>
+          <div class="lrow"><span class="fi txt" style="width:22px;height:26px;border-radius:3px;display:grid;place-items:center;font:700 7px var(--mono);color:#fff;background:#6B7780">TXT</span><span><b style="font-weight:500">dark mode tokens.md</b><small>Documents › zega</small></span><span class="hint">⌘2</span></div>
+          <div class="lsec">Photos</div>
+          <div class="lstrip"><div class="ph-tile" style="background:linear-gradient(135deg,#1E2A3A,#0A0F16)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#2B2B40,#12121E)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#1F3A33,#0B1714)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#3A2A1E,#150F0A)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#2E2E2E,#0E0E0E)"></div><div class="ph-tile" style="background:linear-gradient(135deg,#253045,#0E1320)"></div></div>
+        </div>
+        <div class="lfoot"><span><span class="kbd">↵</span> do it</span><span><span class="kbd">⌘↵</span> open zega</span><span><span class="kbd">⇥</span> search <span class="v">earth</span> instead</span><span><span class="kbd">esc</span> close</span></div>
+      </div>
+    </div>
+  </div>
+  <p class="note" style="margin-top:12px">Mock · files, photos and settings are sample content · the menu-bar "z" opens the floating search, as does ⌥Space</p>
+</div>
+
+<script>
+  // Screens
+  const segs = document.querySelectorAll('.seg button'), win = document.getElementById('win');
+  function show(name) {
+    segs.forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.screen === name)));
+    win.hidden = name === 'launcher';
+    document.querySelectorAll('.screen').forEach((s) => { s.hidden = s.dataset.for !== name; });
+  }
+  segs.forEach((b) => b.addEventListener('click', () => show(b.dataset.screen)));
+  show('landing');
+  document.querySelectorAll('[data-open]').forEach((b) => b.addEventListener('click', () => show(b.dataset.open)));
+  document.querySelectorAll('.opts, .where3').forEach((g) => g.addEventListener('click', (e) => { const b = e.target.closest('button'); if (!b) return; g.querySelectorAll('button').forEach((x) => x.classList.toggle('sel', x === b)); }));
+
+  // The rail switches the graph: only the highlighted word changes.
+  const rail = document.querySelectorAll('.rail button');
+  rail.forEach((b) => b.addEventListener('click', () => {
+    rail.forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    document.querySelectorAll('[data-var]').forEach((v) => { v.textContent = b.dataset.graph; v.classList.remove('flash'); void v.offsetWidth; v.classList.add('flash'); });
+  }));
+</script>

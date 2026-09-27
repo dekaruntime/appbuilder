@@ -1,0 +1,490 @@
+<title>zega search results</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Figtree:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  /* zega.earth's own tokens (app/globals.css), light and dark. */
+  :root {
+    --bg: #F5F7F6; --ink: #0E1A16; --soft: #4F5E58; --edge: #CFDAD5; --panel: #FFFFFF;
+    --accent: #0C8B43; --accent-ink: #FFFFFF; --accent-soft: #DFEFE4; --link: #1A5FB4; --visited: #6B3FA0;
+    --mark: rgba(12, 139, 67, .55); --map-land: #EAF0EC; --map-water: #CFE3EA; --map-road: #FFFFFF;
+    --sans: "Figtree", system-ui, -apple-system, "Segoe UI", sans-serif; --mono: "IBM Plex Mono", ui-monospace, Menlo, monospace;
+  }
+  @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+    color-scheme: dark;
+    --bg: #070B10; --ink: #EEF3F0; --soft: #9AA8A3; --edge: #1D2A33; --panel: #0F1820;
+    --accent: #3CCB77; --accent-ink: #04130A; --accent-soft: #123320; --link: #8AB4F8; --visited: #C58AF9;
+    --mark: rgba(60, 203, 119, .6); --map-land: #13202A; --map-water: #0B2A36; --map-road: #22323D;
+  } }
+  :root[data-theme="dark"] {
+    color-scheme: dark;
+    --bg: #070B10; --ink: #EEF3F0; --soft: #9AA8A3; --edge: #1D2A33; --panel: #0F1820;
+    --accent: #3CCB77; --accent-ink: #04130A; --accent-soft: #123320; --link: #8AB4F8; --visited: #C58AF9;
+    --mark: rgba(60, 203, 119, .6); --map-land: #13202A; --map-water: #0B2A36; --map-road: #22323D;
+  }
+  html, body { background: var(--bg); }
+  body { margin: 0; color: var(--ink); font: 14px/1.5 var(--sans); }
+  a { color: inherit; text-decoration: none; }
+  button { font: inherit; color: inherit; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  .app { display: grid; grid-template-columns: 44px minmax(0, 1fr); min-height: 100%; }
+
+  /* graph rail */
+  .rail { position: sticky; top: env(safe-area-inset-top, 0px); height: 100vh; display: flex; flex-direction: column; align-items: center; gap: 8px; padding: 12px 0; border-right: 1px solid var(--edge); background: var(--panel); }
+  .rail a { width: 26px; height: 26px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--edge); color: var(--ink); position: relative; transition: border-radius .15s; }
+  .rail a:hover { border-radius: 12px; }
+  .rail a[aria-current] { border-radius: 12px; background: var(--ink); color: var(--panel); border-color: var(--ink); }
+  .rail a[aria-current]::before { content: ""; position: absolute; left: -9px; width: 3px; height: 16px; border-radius: 0 4px 4px 0; background: var(--ink); }
+  .rail .z { font: 700 14px var(--sans); letter-spacing: -.05em; border: 0; margin-bottom: 6px; }
+
+  .main { min-width: 0; }
+  /* header */
+  .top { display: flex; align-items: center; gap: 18px; padding: 12px 28px 0; flex-wrap: nowrap; }
+  .word { font: 700 19px var(--sans); letter-spacing: -.04em; white-space: nowrap; }
+  .word span { color: var(--soft); }
+  .search { flex: 1 1 auto; max-width: 620px; min-width: 160px; display: flex; align-items: center; gap: 8px; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; padding: 3px 4px 3px 16px; box-shadow: 0 2px 10px rgba(0, 0, 0, .05); }
+  .search input { flex: 1; min-width: 0; border: 0; background: transparent; font: 400 15px var(--sans); padding: 5px 0; color: var(--ink); outline: none; }
+  .round { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--edge); background: var(--panel); flex: none; cursor: pointer; }
+  .round.go { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+  .spacer { flex: 1; }
+  .me { display: flex; align-items: center; gap: 10px; font-size: 14px; }
+  .avatar { width: 30px; height: 30px; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #f3c08a 0 30%, #e39a3c 31%); }
+
+  .tabs { display: flex; gap: 26px; padding: 14px 28px 0 calc(28px + 138px); border-bottom: 1px solid var(--edge); overflow-x: auto; font-size: 14.5px; color: var(--soft); }
+  .tabs a { padding: 8px 0 11px; border-bottom: 3px solid transparent; white-space: nowrap; }
+  .tabs a[aria-current] { color: var(--ink); border-color: var(--ink); font-weight: 600; }
+  .tabs a:hover { color: var(--ink); }
+
+  .page { display: grid; grid-template-columns: minmax(0, 640px) minmax(0, 380px); gap: 64px; padding: 20px 28px 60px calc(28px + 138px); }
+  .col { display: grid; gap: 30px; align-content: start; }
+
+  .about { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; font-size: 13.5px; color: var(--soft); }
+  .chip { display: inline-flex; align-items: center; gap: 9px; padding: 7px 14px 7px 8px; border-radius: 12px; background: var(--panel); border: 1px solid var(--edge); color: var(--ink); font-size: 14px; }
+  .chip i { width: 26px; height: 26px; border-radius: 7px; background: var(--accent-soft); display: grid; place-items: center; font-style: normal; color: var(--accent); }
+  .chip small { display: block; color: var(--soft); font-size: 12px; line-height: 1.1; }
+
+  .where { display: flex; align-items: center; gap: 12px; font-size: 14px; }
+  .where b { font-weight: 600; }
+  .where .dot { width: 9px; height: 9px; border-radius: 50%; background: var(--accent); }
+  .where button { background: transparent; border: 1px solid var(--edge); border-radius: 999px; padding: 4px 12px; color: var(--link); cursor: pointer; font-size: 13px; }
+  .where small { color: var(--soft); font-size: 12.5px; }
+
+  .result { display: grid; gap: 4px; }
+  .site { display: flex; align-items: center; gap: 10px; font-size: 13px; }
+  .site i { width: 28px; height: 28px; border-radius: 50%; border: 1px solid var(--edge); background: var(--panel); display: grid; place-items: center; font: 700 11px var(--sans); font-style: normal; }
+  .site div { display: grid; line-height: 1.25; } .site div span { color: var(--soft); font-size: 12px; }
+  .result h3 { margin: 2px 0 0; font: 400 20px/1.3 var(--sans); color: var(--link); }
+  .result h3 a:hover { text-decoration: underline; }
+  .result p { margin: 0; color: var(--soft); font-size: 14px; }
+  .result p b { color: var(--ink); font-weight: 600; }
+
+  h2 { font: 500 21px var(--sans); margin: 0 0 12px; letter-spacing: -.01em; }
+  h2 small { font-size: 13px; color: var(--soft); font-weight: 400; margin-left: 8px; }
+
+  /* Graph Components */
+  .gc { position: relative; background: var(--panel); border: 1px solid var(--edge); border-radius: 16px; padding: 16px 18px; }
+  .gc .kind { display: none; position: absolute; top: -9px; left: 14px; padding: 0 8px; font: 500 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--accent-ink); background: var(--accent); border-radius: 999px; }
+  .outlines .gc { outline: 2px dashed var(--mark); outline-offset: 4px; }
+  .outlines .gc .kind { display: block; }
+  .gc-head { display: flex; justify-content: space-between; align-items: baseline; margin-bottom: 10px; }
+  .gc-head b { font-weight: 600; font-size: 15px; } .gc-head span { color: var(--soft); font-size: 12.5px; }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; font-variant-numeric: tabular-nums; }
+  th { text-align: left; font-weight: 500; color: var(--soft); font-size: 12px; padding: 4px 0; border-bottom: 1px solid var(--edge); }
+  td { padding: 7px 0; border-bottom: 1px solid var(--edge); }
+  tr:last-child td { border-bottom: 0; }
+  td.n, th.n { text-align: right; width: 48px; }
+  .tm { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 6px; background: var(--accent-soft); color: var(--accent); font: 700 10px var(--sans); margin-right: 8px; vertical-align: middle; }
+
+  .stories { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .story { display: grid; gap: 6px; align-content: start; }
+  .story .ph { aspect-ratio: 16 / 10; border-radius: 12px; background: linear-gradient(135deg, var(--accent-soft), var(--edge)); display: grid; place-items: center; color: var(--soft); font: 500 11px var(--mono); }
+  .story .src { font-size: 12.5px; color: var(--soft); }
+  .story a { color: var(--link); font-size: 15px; line-height: 1.35; }
+  .story .t { font-size: 12.5px; color: var(--soft); }
+
+  .related { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+  .related a { display: flex; align-items: center; gap: 10px; padding: 11px 16px; background: var(--panel); border: 1px solid var(--edge); border-radius: 999px; font-size: 14.5px; }
+  .related a svg { color: var(--soft); flex: none; }
+
+  .posts { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 14px; }
+  .post { background: var(--panel); border: 1px solid var(--edge); border-radius: 14px; padding: 14px; display: grid; gap: 8px; align-content: start; font-size: 14px; }
+  .post .who { display: flex; align-items: center; gap: 8px; font-size: 13px; }
+  .post .who i { width: 26px; height: 26px; border-radius: 50%; background: var(--accent-soft); }
+  .post .who span { color: var(--soft); display: block; font-size: 12px; }
+  .post .meta { font-size: 12px; color: var(--soft); display: flex; gap: 12px; }
+  .bsky { color: #1185FE; }
+
+  .map { height: 220px; border-radius: 12px; overflow: hidden; border: 1px solid var(--edge); background: var(--map-land); }
+  .places { display: grid; gap: 8px; margin-top: 12px; font-size: 14px; }
+  .places div { display: flex; justify-content: space-between; } .places span { color: var(--soft); font-size: 13px; }
+
+  /* right rail */
+  .kp h1 { font: 500 25px var(--sans); margin: 0; letter-spacing: -.02em; }
+  .kp .sub { color: var(--soft); font-size: 14px; margin-bottom: 14px; }
+  .kp p { margin: 12px 0; font-size: 14.5px; }
+  .kp .srcs { font-size: 13px; color: var(--soft); }
+  .kp .srcs a { color: var(--link); }
+  .facts { margin-top: 14px; font-size: 14px; }
+  .facts div { display: grid; grid-template-columns: 110px minmax(0, 1fr); gap: 10px; padding: 7px 0; border-top: 1px solid var(--edge); }
+  .facts dt, .facts span.k { color: var(--soft); }
+  .also { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 10px; }
+  .also a { display: grid; gap: 6px; justify-items: center; font-size: 13px; text-align: center; }
+  .also a i { width: 100%; aspect-ratio: 1; border-radius: 12px; background: var(--accent-soft); display: grid; place-items: center; color: var(--accent); font: 700 13px var(--sans); font-style: normal; }
+  svg text { font-family: var(--sans); }
+
+  .bar { position: fixed; right: 16px; bottom: calc(16px + env(safe-area-inset-bottom, 0px)); display: flex; gap: 8px; z-index: 5; }
+  .bar button { background: var(--ink); color: var(--panel); border: 0; border-radius: 999px; padding: 9px 14px; font-size: 13px; cursor: pointer; box-shadow: 0 4px 16px rgba(0, 0, 0, .18); }
+  .note { font: 400 11.5px var(--mono); color: var(--soft); padding: 0 28px 24px calc(28px + 138px); }
+
+  @media (max-width: 1100px) {
+    .page { grid-template-columns: minmax(0, 1fr); gap: 34px; padding-left: 28px; }
+    .tabs, .note { padding-left: 28px; }
+  }
+  @media (max-width: 640px) {
+    .app { grid-template-columns: minmax(0, 1fr); }
+    .rail { position: static; height: auto; flex-direction: row; justify-content: center; border-right: 0; border-bottom: 1px solid var(--edge); }
+    .rail a[aria-current]::before { display: none; }
+    .top, .tabs, .page, .note { padding-inline: 16px; }
+    .stories, .posts { grid-template-columns: minmax(0, 1fr); }
+    .related { grid-template-columns: minmax(0, 1fr); }
+    .me span { display: none; }
+  }
+
+  .page { grid-template-columns: 150px minmax(0, 600px) minmax(0, 340px) !important; gap: 36px !important; padding-left: 28px !important; }
+  .tabs { padding-left: calc(28px + 150px + 40px) !important; }
+  .note { padding-left: calc(28px + 150px + 40px) !important; }
+  .filters { display: grid; gap: 22px; align-content: start; font-size: 13.5px; position: sticky; top: 12px; }
+  .fgroup { display: grid; gap: 6px; }
+  .flabel { font-size: 12.5px; font-weight: 600; color: var(--accent); }
+  .filters a { color: var(--soft); }
+  .filters a:hover { color: var(--ink); }
+  .filters a[aria-current] { color: var(--ink); font-weight: 600; }
+  .count { font-size: 13px; color: var(--soft); }
+  .count span { color: var(--accent); }
+  .col { gap: 26px; }
+  .result h3 { font-size: 17px; }
+  .result p { font-size: 13.5px; }
+  .site { font-size: 12.5px; } .site i { width: 24px; height: 24px; font-size: 9.5px; }
+  main.col { max-width: 600px; }
+  .me span { white-space: nowrap; }
+  @media (max-width: 1000px) { .me span { display: none; } }
+  .result h3 a { text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px; text-decoration-color: color-mix(in srgb, var(--link) 45%, transparent); }
+  .sitelinks { display: flex; gap: 16px; flex-wrap: wrap; font-size: 13.5px; margin-top: 2px; }
+  .sitelinks a { color: var(--link); }
+  .why { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin-top: 4px; font-size: 12px; }
+  .why .lbl { font: 500 10.5px var(--mono); letter-spacing: .06em; text-transform: uppercase; color: var(--soft); }
+  .why a { padding: 1px 8px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .why .when { color: var(--soft); margin-left: 4px; }
+  .rel .related { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+  .rel .related a { padding: 8px 14px; font-size: 14px; border-radius: 10px; }
+  .pages { display: flex; gap: 16px; align-items: center; font-size: 15px; }
+  .pages a { color: var(--link); } .pages span { font-weight: 700; }
+  /* Medium widths: filters collapse into one row of dropdowns; results and components stay side by side. */
+  @media (max-width: 1180px) {
+    .page { grid-template-columns: minmax(0, 1fr) minmax(250px, 300px) !important; gap: 28px !important; }
+    .tabs, .note { padding-left: 28px !important; }
+    .filters { grid-column: 1 / -1; position: static; display: flex; flex-wrap: wrap; gap: 8px; }
+    .fgroup { display: block; }
+    .flabel, .fgroup a:not([aria-current]) { display: none; }
+    .fgroup a[aria-current] { display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px; border: 1px solid var(--edge); border-radius: 999px; background: var(--panel); font-weight: 500; font-size: 13px; }
+    .fgroup a[aria-current]::after { content: "▾"; color: var(--soft); font-size: 11px; }
+  }
+  @media (max-width: 700px) { .page { grid-template-columns: minmax(0, 1fr) !important; } }
+  @media (max-width: 640px) { .page, .tabs, .note { padding-inline: 16px !important; } .rel .related { grid-template-columns: minmax(0, 1fr); } }
+
+  .result h3 a { text-decoration: none !important; }
+  .result h3 a:hover { text-decoration: underline !important; }
+  .site .more { margin-left: 6px; width: 24px; height: 24px; border: 0; background: transparent; color: var(--soft); border-radius: 50%; cursor: pointer; font-size: 16px; line-height: 1; }
+  .site .more:hover, .site .more[aria-expanded="true"] { background: var(--accent-soft); color: var(--ink); }
+  .air { display: grid; gap: 14px; }
+  .air .top2 { display: flex; align-items: center; gap: 10px; }
+  .air .top2 i { width: 26px; height: 26px; border-radius: 50%; border: 1px solid var(--edge); display: grid; place-items: center; font: 700 9.5px var(--sans); font-style: normal; }
+  .air .top2 b { font-weight: 500; flex: 1; }
+  .air .x { border: 0; background: transparent; font-size: 20px; color: var(--soft); cursor: pointer; }
+  .air .head2 { display: flex; gap: 12px; align-items: start; justify-content: space-between; }
+  .air .head2 h3 { margin: 0; font: 500 17px/1.35 var(--sans); }
+  .air .visit { background: var(--link); color: #fff; border-radius: 999px; padding: 7px 14px; font-weight: 600; font-size: 13px; white-space: nowrap; }
+  .air p { margin: 0; color: var(--soft); font-size: 13.5px; }
+  .air .acts { display: flex; flex-wrap: wrap; gap: 8px; }
+  .air .acts button { border: 0; background: var(--accent-soft); border-radius: 999px; padding: 6px 12px; font-size: 12.5px; cursor: pointer; color: var(--ink); }
+  .air h4 { margin: 6px 0 0; font: 500 16px var(--sans); }
+  .air .src b { display: block; font-weight: 500; } .air .src small { color: var(--soft); }
+  .air .whybox { background: color-mix(in srgb, var(--accent-soft) 45%, transparent); border-radius: 12px; padding: 12px 14px; display: grid; gap: 10px; font-size: 13.5px; }
+  .air .whybox ul { margin: 0; padding-left: 18px; display: grid; gap: 6px; }
+  .air .chips { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; font-size: 12.5px; }
+  .air .chips a { padding: 2px 9px; border-radius: 999px; background: var(--accent-soft); color: var(--accent); }
+  .air .chips span { color: var(--soft); }
+  .air .fine { font-size: 12.5px; color: var(--soft); }
+  /* A floating panel over the right rail: the components stay where they are underneath. */
+  .air-wrap { overscroll-behavior: contain; box-sizing: border-box; position: fixed; top: 12px; z-index: 6; max-height: calc(100vh - 24px); overflow-y: auto; box-shadow: 0 18px 50px rgba(0, 0, 0, .28), 0 2px 8px rgba(0, 0, 0, .12); }
+  @media (max-width: 700px) { .air-wrap { left: 12px !important; right: 12px; width: auto !important; top: auto; bottom: 12px; max-height: 70vh; } }
+
+  .air .path { display: grid; gap: 0; padding: 4px 0 2px; }
+  .air .hop { display: grid; grid-template-columns: 18px minmax(0, 1fr); column-gap: 10px; }
+  .air .hop .rail2 { position: relative; display: grid; justify-items: center; }
+  .air .hop .dot { width: 12px; height: 12px; border-radius: 50%; background: var(--panel); border: 2px solid var(--accent); margin-top: 4px; z-index: 1; }
+  .air .hop.first .dot { background: var(--ink); border-color: var(--ink); }
+  .air .hop.last .dot { background: var(--accent); }
+  .air .hop.you .dot { border-style: dashed; }
+  .air .hop .rail2::after { content: ""; position: absolute; top: 16px; bottom: -4px; width: 2px; background: var(--edge); }
+  .air .hop.last .rail2::after { display: none; }
+  .air .hop:not(:has(.dot)) .rail2::after { top: -2px; bottom: -2px; }
+  .air .hop:has(.dot):not(.first) .rail2::before { content: ""; position: absolute; top: -2px; height: 8px; width: 2px; background: var(--edge); }
+  .air .hop .edge { grid-column: 2; font: 500 10.5px var(--mono); letter-spacing: .04em; color: var(--soft); padding: 2px 0 2px; }
+  .air .hop .nd { padding-bottom: 8px; line-height: 1.3; }
+  .air .hop .nd b { font-weight: 600; font-size: 13.5px; display: block; }
+  .air .hop .nd small { color: var(--soft); font-size: 12px; }
+  .air .pathnote { font-size: 12px; color: var(--soft); }
+
+  .air .hop.rank .dot { border-radius: 3px; border-color: var(--soft); background: var(--edge); }
+  .air .hop.rank .nd b { font-weight: 500; font-style: italic; }
+
+  .air { gap: 12px; }
+  .air .hd { display: flex; align-items: center; gap: 8px; }
+  .air .hd i { width: 22px; height: 22px; border-radius: 50%; border: 1px solid var(--edge); display: grid; place-items: center; font: 700 8.5px var(--sans); font-style: normal; flex: none; }
+  .air .hd .dom { font-size: 13px; color: var(--soft); flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .air .acts2 { display: flex; align-items: center; gap: 2px; }
+  .air .ib { width: 28px; height: 28px; border: 0; border-radius: 8px; background: transparent; color: var(--soft); display: grid; place-items: center; cursor: pointer; }
+  .air .ib:hover { background: var(--accent-soft); color: var(--ink); }
+  .air .x { width: 28px; height: 28px; font-size: 18px; border-radius: 8px; }
+  .air .x:hover { background: var(--accent-soft); }
+  .air .ttl { color: var(--link); font: 500 15.5px/1.35 var(--sans); display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+  .air .ttl:hover { text-decoration: underline; }
+  .air h4 { margin: 4px 0 0; font: 600 13px var(--sans); letter-spacing: .01em; }
+  .air .hop .nd .desc { display: block; color: var(--soft); font-size: 12px; margin-top: 3px; line-height: 1.4; }
+  .air .whylist { margin: 0; padding-left: 18px; display: grid; gap: 4px; font-size: 13px; color: var(--soft); }
+</style>
+
+<div class="app" id="app">
+  <nav class="rail" aria-label="Graphs">
+    <a class="z" href="#home" aria-label="zega">z</a>
+    <a href="#earth" title="earth" aria-label="earth"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.6 3.8 5.6 3.8 9s-1.2 6.4-3.8 9c-2.6-2.6-3.8-5.6-3.8-9S9.4 5.6 12 3z"/></svg></a>
+    <a href="#hockey" aria-current="page" title="hockey" aria-label="hockey"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3 9.5 15.5c-.6 1.1-1.2 1.5-2.4 1.5H3v3h5.2c1.9 0 3-.6 3.9-2.3L19 4"/><ellipse cx="17.5" cy="19" rx="3.5" ry="1.4"/></svg></a>
+    <a href="#film" title="film" aria-label="film"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linejoin="round"><rect x="3" y="8" width="18" height="12" rx="2"/><path d="m3 8 2.5-4.5 4 1.5-2.5 4M10.5 6.5 14.5 8M16 9.5l2.5-4"/></svg></a>
+    <a href="#music" title="music" aria-label="music"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M9 18V5l11-2v13"/><circle cx="6.5" cy="18" r="2.5"/><circle cx="17.5" cy="16" r="2.5"/></svg></a>
+  </nav>
+
+  <div class="main">
+    <header class="top">
+      <a class="word" href="#home">zega <span>hockey</span></a>
+      <form class="search" role="search" onsubmit="event.preventDefault()">
+        <label for="q" class="visually-hidden" hidden>Search hockey</label>
+        <input id="q" value="hockey" aria-label="Search hockey">
+        <button class="round" type="button" aria-label="Speak"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><rect x="9" y="3" width="6" height="11" rx="3"/><path d="M5 11a7 7 0 0 0 14 0M12 18v3"/></svg></button>
+        <button class="round go" type="submit" aria-label="Search"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><path d="M5 12h14M13 6l6 6-6 6"/></svg></button>
+      </form>
+      <span class="spacer"></span>
+      <span class="me"><span>Sami</span><i class="avatar" aria-hidden="true"></i></span>
+    </header>
+
+    <nav class="tabs" aria-label="Hockey topics">
+      <a href="#all" aria-current="page">All</a><a href="#teams">Teams</a><a href="#players">Players</a><a href="#games">Games</a><a href="#standings">Standings</a><a href="#seasons">Seasons</a><a href="#trades">Trades</a><a href="#news">News</a>
+    </nav>
+
+    <div class="page">
+      <nav class="filters" aria-label="Filters">
+        <div class="fgroup"><span class="flabel">Time</span>
+          <a href="#t0" aria-current="true">Any time</a><a href="#t1">Past day</a><a href="#t2">Past week</a><a href="#t3">Past month</a><a href="#t4">Past year</a>
+          <a href="#t5">Season 26</a><a href="#t6">Season 25</a><a href="#t7">As of a date…</a></div>
+        <div class="fgroup"><span class="flabel">Sources</span>
+          <a href="#s0" aria-current="true">All sources</a><a href="#s1">Web</a><a href="#s2">News</a><a href="#s3">Bluesky</a><a href="#s4">Graph only</a></div>
+        <div class="fgroup"><span class="flabel">Match</span>
+          <a href="#m0" aria-current="true">All results</a><a href="#m1">Verbatim</a></div>
+        <div class="fgroup"><span class="flabel">Place</span>
+          <a href="#p0">Near Calgary</a><a href="#p1" aria-current="true">Anywhere</a></div>
+      </nav>
+      <main class="col" aria-label="Results">
+        <div class="count">About 1,240,000 pages · 0.08 seconds · <span>graph: hockey</span></div>
+          <article class="result" data-info='{&quot;src&quot;: &quot;National Hockey League&quot;, &quot;kind&quot;: &quot;League&quot;, &quot;about&quot;: &quot;The National Hockey League is a professional ice hockey league in North America of 32 teams, 25 in the United States and 7 in Canada.&quot;, &quot;entities&quot;: [&quot;National Hockey League&quot;], &quot;when&quot;: &quot;Updated today&quot;, &quot;why&quot;: [&quot;Your search term appears in the page: hockey&quot;, &quot;Many hockey pages in the graph link to it&quot;, &quot;It is the official site of an entity in the hockey graph&quot;], &quot;site&quot;: &quot;NHL.com&quot;, &quot;title&quot;: &quot;NHL.com: Official Site of the National Hockey League&quot;, &quot;snippet&quot;: &quot;The official National Hockey League website including news, rosters, stats, schedules, teams and video.&quot;, &quot;path&quot;: [{&quot;node&quot;: &quot;hockey&quot;, &quot;kind&quot;: &quot;your search&quot;, &quot;edge&quot;: null}, {&quot;node&quot;: &quot;Ice hockey&quot;, &quot;kind&quot;: &quot;Sport&quot;, &quot;edge&quot;: &quot;same as&quot;}, {&quot;node&quot;: &quot;National Hockey League&quot;, &quot;kind&quot;: &quot;League&quot;, &quot;edge&quot;: &quot;top league of&quot;}, {&quot;node&quot;: &quot;nhl.com&quot;, &quot;kind&quot;: &quot;this page&quot;, &quot;edge&quot;: &quot;official site&quot;}]}'>
+            <div class="site"><i>NHL</i><div>NHL.com<span>https://www.nhl.com</span></div><button class="more" type="button" aria-label="About this result">⋮</button></div>
+            <h3><a href="#r">NHL.com: Official Site of the National Hockey League</a></h3>
+            <p><b>The official National Hockey League website</b> including news, rosters, stats, schedules, teams and video.</p><div class="sitelinks"><a href="#s">Standings</a><a href="#s">Schedule</a><a href="#s">Stats</a><a href="#s">Teams</a></div>
+          </article>
+          <article class="result" data-info='{&quot;src&quot;: &quot;Wikipedia&quot;, &quot;kind&quot;: &quot;Encyclopedia&quot;, &quot;about&quot;: &quot;A free online encyclopedia written and maintained by volunteers. Its text is CC BY-SA.&quot;, &quot;entities&quot;: [&quot;Ice hockey&quot;, &quot;IIHF&quot;], &quot;when&quot;: &quot;Edited 2 days ago&quot;, &quot;why&quot;: [&quot;Your search term is the article title&quot;, &quot;It describes the node \&quot;Ice hockey\&quot; in the graph&quot;], &quot;site&quot;: &quot;Wikipedia&quot;, &quot;title&quot;: &quot;Ice hockey \u2014 Wikipedia&quot;, &quot;snippet&quot;: &quot;Ice hockey is a team sport played on ice skates, usually on a rink with lines and markings specific to the sport. Two teams of six skaters try to shoot a puck into the other\u2019s net\u2026&quot;, &quot;path&quot;: [{&quot;node&quot;: &quot;hockey&quot;, &quot;kind&quot;: &quot;your search&quot;, &quot;edge&quot;: null}, {&quot;node&quot;: &quot;Ice hockey&quot;, &quot;kind&quot;: &quot;Sport&quot;, &quot;edge&quot;: &quot;same as&quot;}, {&quot;node&quot;: &quot;en.wikipedia.org \u203a Ice_hockey&quot;, &quot;kind&quot;: &quot;this page&quot;, &quot;edge&quot;: &quot;described by&quot;}]}'>
+            <div class="site"><i>W</i><div>Wikipedia<span>https://en.wikipedia.org › wiki › Ice_hockey</span></div><button class="more" type="button" aria-label="About this result">⋮</button></div>
+            <h3><a href="#r">Ice hockey — Wikipedia</a></h3>
+            <p>Ice hockey is a <b>team sport played on ice skates</b>, usually on a rink with lines and markings specific to the sport. Two teams of six skaters try to shoot a puck into the other’s net…</p>
+          </article>
+          <article class="result" data-info='{&quot;src&quot;: &quot;International Ice Hockey Federation&quot;, &quot;kind&quot;: &quot;Governing body&quot;, &quot;about&quot;: &quot;The world governing body of ice hockey, founded in 1908.&quot;, &quot;entities&quot;: [&quot;IIHF&quot;, &quot;Ice hockey at the Olympics&quot;], &quot;when&quot;: &quot;Updated this week&quot;, &quot;why&quot;: [&quot;Your search term appears in the page: hockey&quot;, &quot;It is the official site of an entity in the hockey graph&quot;], &quot;site&quot;: &quot;IIHF&quot;, &quot;title&quot;: &quot;International Ice Hockey Federation&quot;, &quot;snippet&quot;: &quot;The world governing body of ice hockey: world championships, Olympic tournaments and member associations.&quot;, &quot;path&quot;: [{&quot;node&quot;: &quot;hockey&quot;, &quot;kind&quot;: &quot;your search&quot;, &quot;edge&quot;: null}, {&quot;node&quot;: &quot;Ice hockey&quot;, &quot;kind&quot;: &quot;Sport&quot;, &quot;edge&quot;: &quot;same as&quot;}, {&quot;node&quot;: &quot;IIHF&quot;, &quot;kind&quot;: &quot;Governing body&quot;, &quot;edge&quot;: &quot;governed by&quot;}, {&quot;node&quot;: &quot;iihf.com&quot;, &quot;kind&quot;: &quot;this page&quot;, &quot;edge&quot;: &quot;official site&quot;}]}'>
+            <div class="site"><i>IIHF</i><div>IIHF<span>https://www.iihf.com</span></div><button class="more" type="button" aria-label="About this result">⋮</button></div>
+            <h3><a href="#r">International Ice Hockey Federation</a></h3>
+            <p>The world governing body of ice hockey: world championships, Olympic tournaments and member associations.</p>
+          </article>
+          <article class="result" data-info='{&quot;src&quot;: &quot;Reddit&quot;, &quot;kind&quot;: &quot;Community&quot;, &quot;about&quot;: &quot;r/hockey is a community for discussing the NHL, PWHL, IIHF and all other hockey.&quot;, &quot;entities&quot;: [&quot;National Hockey League&quot;, &quot;PWHL&quot;], &quot;when&quot;: &quot;Active now&quot;, &quot;why&quot;: [&quot;Your search term is the community name&quot;, &quot;Frequently linked from other hockey pages&quot;], &quot;site&quot;: &quot;Reddit \u00b7 r/hockey&quot;, &quot;title&quot;: &quot;r/hockey&quot;, &quot;snippet&quot;: &quot;Discuss the NHL, PWHL, IIHF, and all other hockey you can think of.&quot;, &quot;path&quot;: [{&quot;node&quot;: &quot;hockey&quot;, &quot;kind&quot;: &quot;your search&quot;, &quot;edge&quot;: null, &quot;type&quot;: &quot;&quot;}, {&quot;node&quot;: &quot;Web search&quot;, &quot;kind&quot;: &quot;all pages about \&quot;hockey\&quot;&quot;, &quot;edge&quot;: &quot;searched&quot;, &quot;type&quot;: &quot;rank&quot;}, {&quot;node&quot;: &quot;Top pages for \&quot;hockey\&quot;&quot;, &quot;kind&quot;: &quot;ranked by zega&quot;, &quot;edge&quot;: &quot;ranked among&quot;, &quot;type&quot;: &quot;rank&quot;}, {&quot;node&quot;: &quot;reddit.com \u203a r \u203a hockey&quot;, &quot;kind&quot;: &quot;this page&quot;, &quot;edge&quot;: &quot;one of&quot;, &quot;type&quot;: &quot;&quot;}]}'>
+            <div class="site"><i>r/</i><div>Reddit · r/hockey<span>https://www.reddit.com › r › hockey</span></div><button class="more" type="button" aria-label="About this result">⋮</button></div>
+            <h3><a href="#r">r/hockey</a></h3>
+            <p>Discuss the NHL, PWHL, IIHF, and all other hockey you can think of.</p>
+          </article>
+          <article class="result" data-info='{&quot;src&quot;: &quot;Professional Women&#x27;s Hockey League&quot;, &quot;kind&quot;: &quot;League&quot;, &quot;about&quot;: &quot;A professional women\u2019s ice hockey league in North America.&quot;, &quot;entities&quot;: [&quot;PWHL&quot;], &quot;when&quot;: &quot;Updated today&quot;, &quot;why&quot;: [&quot;Your search term appears in the page: hockey&quot;, &quot;It is the official site of an entity in the hockey graph&quot;], &quot;site&quot;: &quot;PWHL&quot;, &quot;title&quot;: &quot;Professional Women\u2019s Hockey League&quot;, &quot;snippet&quot;: &quot;Official site of the PWHL: teams, schedule, standings and tickets.&quot;, &quot;path&quot;: [{&quot;node&quot;: &quot;hockey&quot;, &quot;kind&quot;: &quot;your search&quot;, &quot;edge&quot;: null}, {&quot;node&quot;: &quot;Ice hockey&quot;, &quot;kind&quot;: &quot;Sport&quot;, &quot;edge&quot;: &quot;same as&quot;}, {&quot;node&quot;: &quot;PWHL&quot;, &quot;kind&quot;: &quot;League&quot;, &quot;edge&quot;: &quot;played in&quot;}, {&quot;node&quot;: &quot;thepwhl.com&quot;, &quot;kind&quot;: &quot;this page&quot;, &quot;edge&quot;: &quot;official site&quot;}]}'>
+            <div class="site"><i>PW</i><div>PWHL<span>https://www.thepwhl.com</span></div><button class="more" type="button" aria-label="About this result">⋮</button></div>
+            <h3><a href="#r">Professional Women’s Hockey League</a></h3>
+            <p>Official site of the PWHL: teams, schedule, standings and tickets.</p>
+          </article>
+          <article class="result" data-info='{&quot;src&quot;: &quot;Hockey Canada&quot;, &quot;kind&quot;: &quot;Governing body&quot;, &quot;about&quot;: &quot;The national governing body for amateur hockey in Canada.&quot;, &quot;entities&quot;: [&quot;Hockey Canada&quot;, &quot;Ice hockey&quot;], &quot;when&quot;: &quot;Updated this week&quot;, &quot;why&quot;: [&quot;Your search term appears in the page: hockey&quot;, &quot;It is the official site of an entity in the hockey graph&quot;], &quot;site&quot;: &quot;Hockey Canada&quot;, &quot;title&quot;: &quot;Hockey Canada&quot;, &quot;snippet&quot;: &quot;National governing body for amateur hockey in Canada: programs, coaching and national teams.&quot;, &quot;path&quot;: [{&quot;node&quot;: &quot;hockey&quot;, &quot;kind&quot;: &quot;your search&quot;, &quot;edge&quot;: null}, {&quot;node&quot;: &quot;Ice hockey&quot;, &quot;kind&quot;: &quot;Sport&quot;, &quot;edge&quot;: &quot;same as&quot;}, {&quot;node&quot;: &quot;Hockey Canada&quot;, &quot;kind&quot;: &quot;Governing body&quot;, &quot;edge&quot;: &quot;governed in Canada by&quot;}, {&quot;node&quot;: &quot;hockeycanada.ca&quot;, &quot;kind&quot;: &quot;this page&quot;, &quot;edge&quot;: &quot;official site&quot;}]}'>
+            <div class="site"><i>HC</i><div>Hockey Canada<span>https://www.hockeycanada.ca</span></div><button class="more" type="button" aria-label="About this result">⋮</button></div>
+            <h3><a href="#r">Hockey Canada</a></h3>
+            <p>National governing body for amateur hockey in Canada: programs, coaching and national teams.</p>
+          </article>
+          <article class="result" data-info='{&quot;src&quot;: &quot;Calgary Flames&quot;, &quot;kind&quot;: &quot;Team&quot;, &quot;about&quot;: &quot;An NHL team based in Calgary, Alberta, in the Pacific Division.&quot;, &quot;entities&quot;: [&quot;Calgary Flames&quot;], &quot;when&quot;: &quot;Updated today&quot;, &quot;why&quot;: [&quot;Your search term appears in the page: hockey&quot;, &quot;Shown higher because you shared your location: Calgary&quot;, &quot;It is the official site of an entity in the hockey graph&quot;], &quot;site&quot;: &quot;Calgary Flames&quot;, &quot;title&quot;: &quot;Calgary Flames \u2014 Official Site&quot;, &quot;snippet&quot;: &quot;News, roster, schedule and tickets for the Calgary Flames.&quot;, &quot;path&quot;: [{&quot;node&quot;: &quot;hockey&quot;, &quot;kind&quot;: &quot;your search&quot;, &quot;edge&quot;: null}, {&quot;node&quot;: &quot;Calgary&quot;, &quot;kind&quot;: &quot;your location \u00b7 shared by you&quot;, &quot;edge&quot;: &quot;near&quot;}, {&quot;node&quot;: &quot;Hockey teams near Calgary&quot;, &quot;kind&quot;: &quot;Set&quot;, &quot;edge&quot;: &quot;teams in&quot;}, {&quot;node&quot;: &quot;Calgary Flames&quot;, &quot;kind&quot;: &quot;Team&quot;, &quot;edge&quot;: &quot;one of&quot;}, {&quot;node&quot;: &quot;nhl.com \u203a flames&quot;, &quot;kind&quot;: &quot;this page&quot;, &quot;edge&quot;: &quot;official site&quot;}]}'>
+            <div class="site"><i>CF</i><div>Calgary Flames<span>https://www.nhl.com › flames</span></div><button class="more" type="button" aria-label="About this result">⋮</button></div>
+            <h3><a href="#r">Calgary Flames — Official Site</a></h3>
+            <p>News, roster, schedule and tickets for the Calgary Flames.</p>
+          </article>
+          <article class="result" data-info='{&quot;src&quot;: &quot;Hockey-Reference&quot;, &quot;kind&quot;: &quot;Statistics site&quot;, &quot;about&quot;: &quot;NHL statistics and history: players, teams, seasons, leaders and awards.&quot;, &quot;entities&quot;: [&quot;National Hockey League&quot;, &quot;Seasons&quot;], &quot;when&quot;: &quot;As of season 25&quot;, &quot;why&quot;: [&quot;Your search term appears in the page: hockey&quot;, &quot;Its facts cover seasons in the graph up to season 25&quot;], &quot;site&quot;: &quot;Hockey-Reference&quot;, &quot;title&quot;: &quot;Hockey-Reference.com \u2014 Hockey Statistics and History&quot;, &quot;snippet&quot;: &quot;NHL stats and history: players, teams, seasons, leaders and awards.&quot;, &quot;path&quot;: [{&quot;node&quot;: &quot;hockey&quot;, &quot;kind&quot;: &quot;your search&quot;, &quot;edge&quot;: null, &quot;type&quot;: &quot;&quot;}, {&quot;node&quot;: &quot;Web search&quot;, &quot;kind&quot;: &quot;all pages about \&quot;hockey\&quot;&quot;, &quot;edge&quot;: &quot;searched&quot;, &quot;type&quot;: &quot;rank&quot;}, {&quot;node&quot;: &quot;Top pages for \&quot;hockey\&quot;&quot;, &quot;kind&quot;: &quot;ranked by zega&quot;, &quot;edge&quot;: &quot;ranked among&quot;, &quot;type&quot;: &quot;rank&quot;}, {&quot;node&quot;: &quot;hockey-reference.com&quot;, &quot;kind&quot;: &quot;this page&quot;, &quot;edge&quot;: &quot;one of&quot;, &quot;type&quot;: &quot;&quot;}]}'>
+            <div class="site"><i>HR</i><div>Hockey-Reference<span>https://www.hockey-reference.com</span></div><button class="more" type="button" aria-label="About this result">⋮</button></div>
+            <h3><a href="#r">Hockey-Reference.com — Hockey Statistics and History</a></h3>
+            <p>NHL stats and history: players, teams, seasons, leaders and awards.</p>
+          </article>
+        <section aria-labelledby="rs-h" class="rel">
+          <h2 id="rs-h">Searches related to hockey</h2>
+          <div class="related">
+            <a href="#r1">NHL standings season 26</a><a href="#r2">hockey rules for beginners</a><a href="#r3">why 84 games this season</a><a href="#r4">PWHL teams</a><a href="#r5">hockey positions explained</a><a href="#r6">Olympic hockey schedule</a>
+          </div>
+        </section>
+        <nav class="pages" aria-label="Pages"><span aria-current="page">1</span><a href="#p2">2</a><a href="#p3">3</a><a href="#p4">4</a><a href="#p5">5</a><a href="#next">Next</a></nav>
+      </main>
+      <aside class="col" aria-label="About ice hockey">
+        <section class="gc kp" aria-labelledby="kp-h">
+          <span class="kind">graph component · large · entity</span>
+          <h1 id="kp-h">Ice hockey</h1>
+          <div class="sub">Sport · a node in the hockey graph</div>
+          <svg viewBox="0 0 340 150" width="100%" aria-label="A hockey rink" role="img">
+            <rect x="6" y="6" width="328" height="138" rx="54" fill="var(--panel)" stroke="var(--soft)" stroke-width="2"/>
+            <line x1="170" y1="6" x2="170" y2="144" stroke="#C0392B" stroke-width="3"/>
+            <line x1="112" y1="6" x2="112" y2="144" stroke="#2E6FD8" stroke-width="3"/>
+            <line x1="228" y1="6" x2="228" y2="144" stroke="#2E6FD8" stroke-width="3"/>
+            <line x1="30" y1="12" x2="30" y2="138" stroke="#C0392B" stroke-width="1.5"/>
+            <line x1="310" y1="12" x2="310" y2="138" stroke="#C0392B" stroke-width="1.5"/>
+            <circle cx="170" cy="75" r="22" fill="none" stroke="#2E6FD8" stroke-width="2"/>
+            <circle cx="66" cy="42" r="16" fill="none" stroke="#C0392B" stroke-width="1.5"/><circle cx="66" cy="108" r="16" fill="none" stroke="#C0392B" stroke-width="1.5"/>
+            <circle cx="274" cy="42" r="16" fill="none" stroke="#C0392B" stroke-width="1.5"/><circle cx="274" cy="108" r="16" fill="none" stroke="#C0392B" stroke-width="1.5"/>
+          </svg>
+          <p>Ice hockey is a team sport played on ice skates, usually on a rink with lines and markings specific to the sport. Two teams of six skaters each try to shoot a puck into the other's net.</p>
+          <dl class="facts">
+            <div><dt>Governing body</dt><dd style="margin:0">IIHF (founded 1908)</dd></div>
+            <div><dt>First organized indoor game</dt><dd style="margin:0">1875, Montreal</dd></div>
+            <div><dt>Players</dt><dd style="margin:0">6 per side on the ice</dd></div>
+            <div><dt>Olympic sport</dt><dd style="margin:0">since 1920</dd></div>
+          </dl>
+          <div class="srcs">Sources: <a href="#wd">Wikidata</a> · <a href="#wp">Wikipedia</a></div>
+        </section>
+
+        <section class="gc" aria-labelledby="gp-h">
+          <span class="kind">graph component · medium · line over seasons</span>
+          <div class="gc-head"><b id="gp-h">NHL games per season</b><span>season 92 → 26</span></div>
+          <svg viewBox="0 0 340 150" width="100%" role="img" aria-label="Games per NHL season from 1992 to 2026: 84, then 82, with lockout and pandemic dips, 84 again from season 26">
+            <g stroke="var(--edge)" stroke-width="1"><line x1="34" y1="20" x2="330" y2="20"/><line x1="34" y1="62" x2="330" y2="62"/><line x1="34" y1="104" x2="330" y2="104"/><line x1="34" y1="130" x2="330" y2="130"/></g>
+            <g font-size="10" fill="var(--soft)" text-anchor="end"><text x="28" y="23">84</text><text x="28" y="65">56</text><text x="28" y="107">28</text><text x="28" y="133">0</text></g>
+            <!-- x: 34 + (season-1992)*8.7 ; y: 130 - games*1.31 -->
+            <polyline fill="none" stroke="var(--accent)" stroke-width="2.5" stroke-linejoin="round" points="34,20 43,20 51,67 60,22 69,22 77,22 86,22 95,22 104,22 112,22 121,22 130,22 138,130 147,22 156,22 164,22 173,22 182,22 191,22 199,22 208,67 217,22 225,22 234,22 243,22 251,22 260,22 269,38 277,57 286,22 295,22 304,22 312,22 321,22 330,20"/>
+            <circle cx="330" cy="20" r="4" fill="var(--accent)"/>
+            <g font-size="10" fill="var(--ink)"><text x="116" y="128">lockout</text><text x="200" y="80">48</text><text x="248" y="76">pandemic</text><text x="300" y="13">84</text></g>
+            <g font-size="10" fill="var(--soft)"><text x="34" y="146">92</text><text x="130" y="146">04</text><text x="234" y="146">16</text><text x="316" y="146">26</text></g>
+          </svg>
+        </section>
+
+        <section class="gc" aria-labelledby="ng-h">
+          <span class="kind">graph component · small · graph</span>
+          <div class="gc-head"><b id="ng-h">National Hockey League</b><span>32 teams · 2 conferences</span></div>
+          <svg viewBox="0 0 340 120" width="100%" role="img" aria-label="The NHL: two conferences, four divisions, 32 teams">
+            <g stroke="var(--edge)" stroke-width="1.5">
+              <line x1="170" y1="18" x2="90" y2="56"/><line x1="170" y1="18" x2="250" y2="56"/>
+              <line x1="90" y1="56" x2="50" y2="96"/><line x1="90" y1="56" x2="130" y2="96"/><line x1="250" y1="56" x2="210" y2="96"/><line x1="250" y1="56" x2="290" y2="96"/>
+            </g>
+            <circle cx="170" cy="18" r="11" fill="var(--ink)"/>
+            <circle cx="90" cy="56" r="8" fill="var(--accent)"/><circle cx="250" cy="56" r="8" fill="var(--accent)"/>
+            <g fill="var(--accent-soft)" stroke="var(--accent)"><circle cx="50" cy="96" r="7"/><circle cx="130" cy="96" r="7"/><circle cx="210" cy="96" r="7"/><circle cx="290" cy="96" r="7"/></g>
+            <g font-size="10" fill="var(--soft)" text-anchor="middle"><text x="90" y="44">Eastern</text><text x="250" y="44">Western</text><text x="50" y="115">Atlantic</text><text x="130" y="115">Metro</text><text x="210" y="115">Central</text><text x="290" y="115">Pacific</text></g>
+          </svg>
+        </section>
+
+        <section class="gc" aria-labelledby="ny-h">
+          <span class="kind">graph component · small · map</span>
+          <div class="gc-head"><b id="ny-h">Rinks near you</b><span>Calgary · shared by you</span></div>
+          <svg viewBox="0 0 340 110" width="100%" role="img" aria-label="Three rinks in Calgary">
+            <rect width="340" height="110" rx="10" fill="var(--map-land)"/>
+            <path d="M-5 78 C 70 60, 120 88, 180 70 S 280 44, 345 56" fill="none" stroke="var(--map-water)" stroke-width="10"/>
+            <path d="M40 -5 L 70 115 M 160 -5 L 150 115 M 260 -5 L 290 115 M -5 30 L 345 22" stroke="var(--map-road)" stroke-width="5" fill="none"/>
+            <circle cx="80" cy="48" r="6" fill="var(--accent)"/><circle cx="200" cy="36" r="6" fill="var(--accent)"/><circle cx="130" cy="92" r="6" fill="var(--accent)"/>
+          </svg>
+          <div class="places"><div>WinSport Arena<span>public skates</span></div><div>Max Bell Centre<span>adult leagues</span></div><div>Father David Bauer Arena<span>minor hockey</span></div></div>
+        </section>
+        <section aria-labelledby="ps-h">
+          <h2 id="ps-h">People also search for</h2>
+          <div class="also">
+            <a href="#soccer"><i>S</i>Soccer</a><a href="#bball"><i>B</i>Basketball</a><a href="#lax"><i>L</i>Lacrosse</a><a href="#ringette"><i>R</i>Ringette</a>
+          </div>
+        </section>
+      </aside>
+    </div>
+    <p class="note">Mock · zega search results for "hockey" in the hockey graph · ⋮ next to a result opens "About this result" on the right · the dashed outlines (toggle) mark Graph Components</p>
+  </div>
+</div>
+
+<div class="bar">
+  <button type="button" id="outl" aria-pressed="false">Show components</button>
+  <button type="button" id="theme">Dark</button>
+</div>
+
+<script>
+  const app = document.getElementById('app'), ob = document.getElementById('outl');
+  ob.addEventListener('click', () => { const on = app.classList.toggle('outlines'); ob.setAttribute('aria-pressed', on); ob.textContent = on ? 'Hide components' : 'Show components'; });
+  const tb = document.getElementById('theme'), root = document.documentElement;
+  const dark = () => root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+  const label = () => { tb.textContent = dark() ? 'Light' : 'Dark'; };
+  tb.addEventListener('click', () => { root.dataset.theme = dark() ? 'light' : 'dark'; label(); });
+  label();
+
+  // "About this result": the ⋮ next to a result opens a component in the right rail (Google's pattern).
+  const aside = document.querySelector('aside.col');
+  let openBtn = null;
+  const esc = (t) => String(t).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  function closePanel() { document.querySelector('.air-wrap')?.remove(); openBtn?.setAttribute('aria-expanded', 'false'); openBtn = null; }
+  document.querySelectorAll('.result .more').forEach((btn) => btn.addEventListener('click', () => {
+    if (openBtn === btn) { closePanel(); return; }
+    if (openBtn) openBtn.setAttribute('aria-expanded', 'false');
+    document.querySelector('.air-wrap')?.remove();
+    const d = JSON.parse(btn.closest('.result').dataset.info);
+    const icon = btn.closest('.site').querySelector('i').textContent;
+    const wrap = document.createElement('section');
+    wrap.className = 'gc air air-wrap'; wrap.setAttribute('aria-label', 'About this result');
+    const ico = {
+      share: '<path d="M12 3v12M7 8l5-5 5 5M5 14v5a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2v-5"/>',
+      save: '<path d="M6 3h12v18l-6-4-6 4z"/>',
+      hide: '<path d="M3 3l18 18M10.6 5.1A10 10 0 0 1 12 5c5 0 9 4.5 10 7a13 13 0 0 1-3 4.2M6.1 6.2C3.9 7.6 2.5 9.8 2 12c1 2.5 5 7 10 7a9.6 9.6 0 0 0 4.2-.9"/>',
+      flag: '<path d="M5 21V4h11l-2 4 2 4H5"/>',
+    };
+    const ibtn = (k, label) => `<button type="button" class="ib" aria-label="${label}" title="${label}"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ico[k]}</svg></button>`;
+    // the source entity's one-line description goes under its node in the path
+    const srcNode = d.path.find((h) => h.node === d.src || h.node === d.entities[0]);
+    wrap.innerHTML = `<span class="kind">graph component · large · about this result</span>
+      <div class="hd"><i>${esc(icon)}</i><span class="dom">${esc(d.site)}</span><span class="acts2">${ibtn('share', 'Share')}${ibtn('save', 'Save')}${ibtn('hide', 'Remove result')}${ibtn('flag', 'Feedback')}<button class="x" type="button" aria-label="Close">×</button></span></div>
+      <a class="ttl" href="#visit">${esc(d.title)} <span aria-hidden="true">↗</span></a>
+      <h4>Search Transparency</h4>
+      <div class="path" role="list">${d.path.map((h, i) => `${h.edge ? `<div class="hop" aria-hidden="true"><span class="rail2"></span><span class="edge">↓ ${esc(h.edge)}</span></div>` : ''}<div class="hop${i === 0 ? ' first' : ''}${i === d.path.length - 1 ? ' last' : ''}${/shared by you/.test(h.kind) ? ' you' : ''}${h.type === 'rank' ? ' rank' : ''}" role="listitem"><span class="rail2"><span class="dot"></span></span><span class="nd"><b>${esc(h.node)}</b><small>${esc(h.kind)}</small>${h === srcNode ? `<span class="desc">${esc(d.about)}</span>` : ''}</span></div>`).join('')}</div>
+      <p class="pathnote">Round dots are relationships in the graph; square dots are zega's web ranking, shown as a step without its scores.</p>
+      <h4>Why it ranked</h4>
+      <ul class="whylist">${d.why.map((w) => `<li>${esc(w)}</li>`).join('')}<li>${esc(d.when)}</li></ul>
+      <p class="fine">This is a search result. zega has no ads.</p>`;
+    wrap.querySelector('.x').addEventListener('click', closePanel);
+    document.body.append(wrap); placePanel();
+    btn.setAttribute('aria-expanded', 'true'); openBtn = btn; openedAtY = scrollY;
+  }));
+  // Line the panel up with the right rail it floats over.
+  function placePanel() {
+    const wrap = document.querySelector('.air-wrap'); if (!wrap) return;
+    const r = aside.getBoundingClientRect();
+    wrap.style.left = `${r.left}px`; wrap.style.width = `${r.width}px`;
+  }
+  addEventListener('resize', placePanel);
+  // Dismiss when the page scrolls or on a click outside the panel.
+  let openedAtY = 0;
+  addEventListener('scroll', () => { if (openBtn && Math.abs(scrollY - openedAtY) > 40) closePanel(); }, { passive: true });
+  document.addEventListener('click', (e) => {
+    if (!openBtn) return;
+    if (e.target.closest('.air-wrap') || e.target.closest('.result .more')) return;
+    closePanel();
+  });
+  addEventListener('keydown', (e) => { if (e.key === 'Escape' && openBtn) closePanel(); });
+</script>
