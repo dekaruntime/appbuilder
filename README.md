@@ -9,3 +9,14 @@ A hard fork of the desktop shell that started in zegadb/earth (#6 sign-in, #13 g
 - Local first: the computer graph lives on this machine and never leaves it.
 
 Agents: read `~/Projects/AGENTS.md` (bugsy) or `/Volumes/Projects/AGENTS.md` (iMac) first.
+
+## Run the desktop shell
+
+```sh
+npm ci
+npm run tauri dev
+```
+
+`npm run build:desktop` creates the static export loaded by Tauri. This first
+scaffold includes the landing shell, screen previews, and desktop sign-in.
+Spotlight-backed data and the native menu-bar/global shortcut arrive in follow-up PRs.
