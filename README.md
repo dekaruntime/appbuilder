@@ -20,4 +20,4 @@ npm run tauri dev
 
 `npm run build:desktop` creates the static export loaded by Tauri. This first
 scaffold includes the landing shell, screen previews, and desktop sign-in.
-Spotlight-backed data and the native menu-bar/global shortcut arrive in follow-up PRs.
+Spotlight-backed data, the native menu-bar item, and the global ⌥Space shortcut are available in the desktop app. The floating search opens local settings and files without sending computer graph data off this Mac.

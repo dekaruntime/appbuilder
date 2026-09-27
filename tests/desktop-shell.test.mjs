@@ -41,6 +41,25 @@ test('computer data comes from local Spotlight and machine-discovered settings p
   assert.doesNotMatch(local, /com\.apple\.preference\.(network|sound|displays)/);
 });
 
+test('floating search is a local Tauri window with keyboard result actions', () => {
+  const html = readFileSync('out/launcher/index.html', 'utf8');
+  const page = readFileSync('src/app/launcher/page.tsx', 'utf8');
+  const native = readFileSync('src-tauri/src/menu.rs', 'utf8');
+  const app = readFileSync('src-tauri/src/lib.rs', 'utf8');
+  assert.match(html, /aria-label="zega floating search"/);
+  assert.match(html, /aria-label="Local results"/);
+  assert.match(page, /invoke<LocalFile\[]>\('local_recent_files'\)/);
+  assert.match(page, /invoke<LocalPane\[]>\('local_settings_panes'\)/);
+  assert.match(page, /ArrowDown/);
+  assert.match(page, /ArrowUp/);
+  assert.match(page, /event\.key === 'Enter'/);
+  assert.match(page, /event\.key === 'Escape'/);
+  assert.match(native, /TrayIconBuilder::new\(\)/);
+  assert.match(native, /always_on_top\(true\)/);
+  assert.match(native, /launcher\/index\.html/);
+  assert.match(app, /with_shortcuts\(\["alt\+space"\]\)/);
+});
+
 test('MapLibre uses the same-origin module worker and its adjacent shared chunk', () => {
   const config = readFileSync('src/lib/maplibre-worker.ts', 'utf8');
   const worker = readFileSync('out/globe/maplibre-gl-worker.mjs', 'utf8');
