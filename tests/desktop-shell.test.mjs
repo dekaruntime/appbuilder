@@ -41,6 +41,12 @@ test('computer data comes from local Spotlight and machine-discovered settings p
   assert.doesNotMatch(local, /com\.apple\.preference\.(network|sound|displays)/);
 });
 
+test('the main window capability permits its draggable title bar', () => {
+  const capability = JSON.parse(readFileSync('src-tauri/capabilities/default.json', 'utf8'));
+  assert.ok(capability.windows.includes('main'));
+  assert.ok(capability.permissions.includes('core:window:allow-start-dragging'));
+});
+
 test('MapLibre uses the same-origin module worker and its adjacent shared chunk', () => {
   const config = readFileSync('src/lib/maplibre-worker.ts', 'utf8');
   const worker = readFileSync('out/globe/maplibre-gl-worker.mjs', 'utf8');
