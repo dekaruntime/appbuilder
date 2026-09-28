@@ -59,7 +59,9 @@ fn search_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     WebviewWindowBuilder::new(
         app,
         "launcher",
-        WebviewUrl::App("launcher/index.html".into()),
+        // With `trailingSlash`, `/launcher/` works against Next's dev server
+        // and resolves to `launcher/index.html` in the static bundle.
+        WebviewUrl::App("launcher/".into()),
     )
     .title("zega Search")
     .inner_size(720.0, 440.0)

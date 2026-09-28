@@ -56,7 +56,8 @@ test('floating search is a local Tauri window with keyboard result actions', () 
   assert.match(page, /event\.key === 'Escape'/);
   assert.match(native, /TrayIconBuilder::new\(\)/);
   assert.match(native, /always_on_top\(true\)/);
-  assert.match(native, /launcher\/index\.html/);
+  assert.match(native, /WebviewUrl::App\("launcher\/"\.into\(\)\)/);
+  assert.match(readFileSync('next.config.ts', 'utf8'), /trailingSlash: true/);
   assert.match(app, /with_shortcuts\(\["alt\+space"\]\)/);
 });
 
