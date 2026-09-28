@@ -21,7 +21,9 @@ use tauri::Manager;
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
-            if args.iter().any(|arg| arg == "--shortcut-setup") {
+            if args.iter().any(|arg| arg == "--default-shortcut") {
+                shortcut_setup::apply_default(app.clone());
+            } else if args.iter().any(|arg| arg == "--shortcut-setup") {
                 let _ = shortcut_setup::show_shortcut_setup(app.clone());
             } else if !args.iter().any(|arg| arg == "--autostart") {
                 let _ = menu::open_search_window(app.clone());
@@ -59,12 +61,19 @@ pub fn run() {
             let handle = app.handle().clone();
             let state = AccountState::new(handle).map_err(|error| error.to_string())?;
             app.manage(Arc::new(state));
+            #[cfg(target_os = "linux")]
+            if let Err(error) = desktop_identity::prepare(app.handle()) {
+                eprintln!("Could not install the zega launcher entry: {error}");
+            }
             let first_launch = shortcut_setup::initialize(app.handle())?;
             let login_launch = std::env::args().any(|arg| arg == "--autostart");
             if (first_launch || std::env::args().any(|arg| arg == "--shortcut-setup"))
                 && !login_launch
             {
                 shortcut_setup::show_shortcut_setup(app.handle().clone())?;
+            }
+            if std::env::args().any(|arg| arg == "--search") && !login_launch {
+                menu::open_search_window(app.handle().clone())?;
             }
             Ok(())
         })

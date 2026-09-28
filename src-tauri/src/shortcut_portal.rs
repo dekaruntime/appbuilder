@@ -193,7 +193,7 @@ mod tests {
 
     #[cfg(target_os = "linux")]
     #[tokio::test]
-    #[ignore = "requires a live desktop portal; installs and removes a test desktop identity"]
+    #[ignore = "requires live Hyprland; installs/removes a test identity and dispatches its action"]
     async fn real_portal_accepts_identity_and_repeated_registration() {
         use std::io::Write;
         let config: serde_json::Value =
@@ -225,10 +225,31 @@ mod tests {
         )
         .unwrap();
         drop(file);
-        for _ in 0..2 {
-            let registration = register(&id, &Binding::default(), |_| {})
-                .await
-                .expect("the desktop must accept zega's identified search action");
+        for attempt in 0..2 {
+            let (events, mut received) = tokio::sync::mpsc::unbounded_channel();
+            let registration = register(&id, &Binding::default(), move |event| {
+                if matches!(event, Event::Activated) {
+                    let _ = events.send(());
+                }
+            })
+            .await
+            .expect("the desktop must accept zega's identified search action");
+            let reply = std::process::Command::new("hyprctl")
+                .args([
+                    "-i",
+                    "0",
+                    "eval",
+                    &format!("hl.dispatch(hl.dsp.global(\"{id}:search\"))"),
+                ])
+                .output()
+                .unwrap();
+            assert!(reply.status.success());
+            assert_eq!(String::from_utf8_lossy(&reply.stdout).trim(), "ok");
+            let event = tokio::time::timeout(Duration::from_secs(3), received.recv()).await;
+            assert!(
+                matches!(event, Ok(Some(()))),
+                "registration {attempt} must deliver the real compositor action: {event:?}"
+            );
             registration.close().await;
         }
     }

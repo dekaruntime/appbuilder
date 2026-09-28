@@ -111,7 +111,8 @@ pub fn initialize(app: &AppHandle) -> Result<bool, String> {
         .map_err(|e| e.to_string())?
         .join("launcher-shortcut.json");
     let exists = path.exists();
-    let loaded = if exists {
+    let use_default = std::env::args().any(|arg| arg == "--default-shortcut");
+    let loaded = if exists && !use_default {
         fs::read(&path)
             .map_err(|e| e.to_string())
             .and_then(|bytes| serde_json::from_slice::<Binding>(&bytes).map_err(|e| e.to_string()))
@@ -148,14 +149,30 @@ pub fn initialize(app: &AppHandle) -> Result<bool, String> {
         path,
     })));
     #[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
-    if uses_portal() && exists {
+    if uses_portal() && (exists || use_default) {
         let handle = app.clone();
         let binding = shortcut_status(app.state())?.binding;
         tauri::async_runtime::spawn(async move {
             let _ = shortcut_apply(handle, binding).await;
         });
     }
-    Ok(needs_setup)
+    if use_default && !uses_portal() {
+        let state = app.state::<ShortcutState>();
+        let mut setup = state.0.lock().map_err(|e| e.to_string())?;
+        if setup.status.registered {
+            if let Err(error) = setup.save() {
+                setup.status.error = Some(error);
+            }
+        }
+    }
+    Ok(needs_setup || use_default)
+}
+
+pub fn apply_default(app: AppHandle) {
+    let _ = show_shortcut_setup(app.clone());
+    tauri::async_runtime::spawn(async move {
+        let _ = shortcut_apply(app, Binding::default()).await;
+    });
 }
 
 #[cfg(target_os = "macos")]

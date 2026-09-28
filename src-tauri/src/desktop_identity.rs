@@ -5,22 +5,44 @@ use tauri::{AppHandle, Manager};
 pub fn prepare(app: &AppHandle) -> Result<(), String> {
     let id = &app.config().identifier;
     let filename = format!("{id}.desktop");
-    if gdk::gio::DesktopAppInfo::new(&filename).is_some() {
-        return Ok(());
-    }
     let directory = app
         .path()
         .data_dir()
         .map_err(|e| e.to_string())?
         .join("applications");
     let executable = std::env::current_exe().map_err(|e| e.to_string())?;
-    install_entry(&directory.join(filename), &executable)
+    let path = directory.join(&filename);
+    if !path.exists() && gdk::gio::DesktopAppInfo::new(&filename).is_some() {
+        return Ok(());
+    }
+    install_entry(&path, &executable)
 }
 
 fn install_entry(path: &Path, executable: &Path) -> Result<(), String> {
     fs::create_dir_all(path.parent().ok_or("Missing desktop entry directory")?)
         .map_err(|e| e.to_string())?;
     let contents = desktop_entry(executable)?;
+    // Migrate only the exact hidden entry this app previously generated.
+    let legacy = contents.replace(
+        "--search\nNoDisplay=false",
+        "--shortcut-setup\nNoDisplay=true",
+    );
+    if fs::read_to_string(path).ok().as_deref() == Some(legacy.as_str()) {
+        let staging = path.with_extension(format!("desktop.zega-{}", std::process::id()));
+        let mut file = fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&staging)
+            .map_err(|e| e.to_string())?;
+        file.write_all(contents.as_bytes())
+            .map_err(|e| e.to_string())?;
+        file.sync_all().map_err(|e| e.to_string())?;
+        if fs::read_to_string(path).ok().as_deref() != Some(legacy.as_str()) {
+            fs::remove_file(staging).map_err(|e| e.to_string())?;
+            return Err("The desktop entry changed while updating. Retry setup.".into());
+        }
+        return fs::rename(staging, path).map_err(|e| e.to_string());
+    }
     // Never overwrite an entry installed by a package manager or the user.
     match fs::OpenOptions::new()
         .write(true)
@@ -56,7 +78,7 @@ pub(crate) fn desktop_entry(executable: &Path) -> Result<String, String> {
             _ => quoted.push(ch),
         }
     }
-    Ok(format!("[Desktop Entry]\nType=Application\nName=zega\nExec=\"{quoted}\" --shortcut-setup\nNoDisplay=true\nTerminal=false\n"))
+    Ok(format!("[Desktop Entry]\nType=Application\nName=zega\nExec=\"{quoted}\" --search\nNoDisplay=false\nTerminal=false\n"))
 }
 
 #[cfg(test)]
@@ -75,7 +97,7 @@ mod tests {
         fs::write(
             &executable,
             format!(
-                "#!/bin/sh\n[ \"$1\" = \"--shortcut-setup\" ] && touch '{}'\n",
+                "#!/bin/sh\n[ \"$1\" = \"--search\" ] && touch '{}'\n",
                 marker.to_string_lossy().replace('\'', "'\\''")
             ),
         )
@@ -89,6 +111,10 @@ mod tests {
             .load_from_data(&contents, gdk::glib::KeyFileFlags::NONE)
             .unwrap();
         let info = gdk::gio::DesktopAppInfo::from_keyfile(&key_file).unwrap();
+        assert!(
+            info.should_show(),
+            "zega must be discoverable in desktop launchers"
+        );
         info.launch(&[], None::<&gdk::gio::AppLaunchContext>)
             .unwrap();
         for _ in 0..100 {
@@ -102,6 +128,17 @@ mod tests {
             "GIO must launch the exact executable and argument"
         );
         fs::remove_file(marker).unwrap();
+        let legacy = contents.replace(
+            "--search\nNoDisplay=false",
+            "--shortcut-setup\nNoDisplay=true",
+        );
+        fs::write(&entry, legacy).unwrap();
+        install_entry(&entry, &executable).unwrap();
+        assert_eq!(
+            fs::read_to_string(&entry).unwrap(),
+            contents,
+            "migrate our hidden entry"
+        );
         fs::write(&entry, "user-managed entry").unwrap();
         install_entry(&entry, &executable).unwrap();
         assert_eq!(fs::read_to_string(&entry).unwrap(), "user-managed entry");

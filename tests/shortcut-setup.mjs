@@ -87,8 +87,7 @@ try {
   });
   await page.getByRole('button', {name: 'Use default', exact: true}).click();
   await page.getByRole('button', {name: 'Super+Z', exact: true}).waitFor();
-  await page.getByRole('button', {name: 'Save & check availability'}).click();
-  assert.deepEqual(await page.evaluate(() => window.shortcutStatus.binding), { key: 'KeyZ', alt: false, control: false, shift: false, superKey: true }, 'Linux saves the platform default through the real setup action');
+  assert.deepEqual(await page.evaluate(() => window.shortcutStatus.binding), { key: 'KeyZ', alt: false, control: false, shift: false, superKey: true }, 'Use default immediately saves and applies Linux Super+Z without a second Save click');
   await page.screenshot({path: '.tmp/shortcut-setup.png'});
   assert.deepEqual(errors, []);
   console.log('PASS: conflict, customization, click fallback, native event acknowledgement, explicit confirmation, timeout, platform guidance; zero console errors');
