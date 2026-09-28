@@ -2,7 +2,7 @@
 
 import ShortcutHint from '../../components/ShortcutHint';
 
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -71,10 +71,21 @@ export default function FloatingSearch() {
     ];
   }, [availableSettings, query, recentFiles]);
 
-  const close = async () => {
+  const close = useCallback(async () => {
     setVisible(false);
     try { await invoke('hide_search_window'); } catch { /* Browser mock has no native window. */ }
-  };
+  }, []);
+
+  useEffect(() => {
+    const onEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        event.preventDefault();
+        void close();
+      }
+    };
+    window.addEventListener('keydown', onEscape, true);
+    return () => window.removeEventListener('keydown', onEscape, true);
+  }, [close]);
 
   const openZega = async () => {
     try { await invoke('show_main_window'); } catch { /* Browser mock has no main window. */ }
@@ -93,7 +104,6 @@ export default function FloatingSearch() {
   };
 
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'Escape') { event.preventDefault(); void close(); }
     if (event.key === 'ArrowDown' && results.length) { event.preventDefault(); setActive(index => (index + 1) % results.length); }
     if (event.key === 'ArrowUp' && results.length) { event.preventDefault(); setActive(index => (index - 1 + results.length) % results.length); }
     if (event.metaKey && event.key === 'Enter') { event.preventDefault(); void openZega(); return; }

@@ -144,6 +144,18 @@ try {
   commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
   assert.ok(commands.includes('show_main_window'), 'Command+Return is the explicit main-window action');
   assert.equal(await launcher.evaluate(() => window.mainVisible), true);
+  for (const target of ['input', '.lhead .kbd', '.float-group .lrow', '.lfoot .local-note']) {
+    await launcher.reload({ waitUntil: 'networkidle' });
+    await launcher.getByText('Local fixture.txt').first().waitFor();
+    if (target === '.lfoot .local-note') await launcher.locator(target).click();
+    else await launcher.locator(target).first().focus();
+    if (target !== 'input') assert.equal(await launcher.locator('input').evaluate(element => document.activeElement === element), false);
+    await launcher.keyboard.press('Escape');
+    await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'hide_search_window'), null, { timeout: 2000 });
+    assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'hide_search_window').length), 1, `Escape from ${target} hides search exactly once`);
+    assert.equal(await launcher.getByRole('dialog').count(), 0);
+    assert.equal(await launcher.evaluate(() => window.mainVisible), false);
+  }
   await launcher.goto('http://localhost:1421/launcher/?platform=linux', { waitUntil: 'networkidle' });
   await launcher.getByText('Local fixture.txt').first().waitFor();
   assert.notEqual(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'Other Linux desktops retain rounded corners');
