@@ -5,10 +5,12 @@ use std::fs;
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
-use tauri::State;
+use tauri::{Manager, State};
 
 const SPOTLIGHT_QUERY: &str = "kMDItemContentModificationDate >= $time.now(-604800) && kMDItemContentTypeTree == \"public.data\"";
+const PHOTO_SPOTLIGHT_QUERY: &str = "kMDItemContentModificationDate >= $time.now(-604800) && kMDItemContentTypeTree == \"public.image\"";
 const MAX_SPOTLIGHT_CANDIDATES: usize = 500;
 
 #[derive(Clone, Serialize)]
@@ -32,6 +34,36 @@ pub struct SettingsPane {
 #[derive(Default)]
 pub struct SettingsIndex(Vec<SettingsPane>);
 
+pub struct PictureAccess(Mutex<Option<PathBuf>>);
+
+impl PictureAccess {
+    pub fn load(app: &tauri::AppHandle) -> Self {
+        let allowed = pictures_directory().ok().and_then(|pictures| {
+            let saved = app.path().app_config_dir().ok()?.join("pictures-folder");
+            let selected = fs::read_to_string(saved).ok()?;
+            let selected = PathBuf::from(selected).canonicalize().ok()?;
+            (selected == pictures.canonicalize().ok()?).then_some(selected)
+        });
+        Self(Mutex::new(allowed))
+    }
+
+    fn selected(&self) -> Result<PathBuf, String> {
+        self.0
+            .lock()
+            .map_err(|_| "Pictures access state is unavailable".to_owned())?
+            .clone()
+            .ok_or_else(|| "Pictures access has not been granted".to_owned())
+    }
+
+    fn grant(&self, path: PathBuf) -> Result<(), String> {
+        *self
+            .0
+            .lock()
+            .map_err(|_| "Pictures access state is unavailable".to_owned())? = Some(path);
+        Ok(())
+    }
+}
+
 impl SettingsIndex {
     pub fn discover() -> Self {
         let roots = [
@@ -44,9 +76,7 @@ impl SettingsIndex {
 }
 
 fn recent_files() -> Result<Vec<RecentFile>, String> {
-    let home = std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .ok_or_else(|| "The current user's home directory is unavailable".to_owned())?;
+    let home = home_directory()?;
     let mut child = Command::new("/usr/bin/mdfind")
         .arg("-onlyin")
         .arg(&home)
@@ -84,6 +114,72 @@ fn recent_files() -> Result<Vec<RecentFile>, String> {
         .collect::<Vec<_>>();
     files.sort_by_key(|entry| std::cmp::Reverse(entry.0));
     Ok(files.into_iter().take(5).map(|(_, file)| file).collect())
+}
+
+#[derive(Clone, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RecentPhoto {
+    name: String,
+    path: String,
+}
+
+fn home_directory() -> Result<PathBuf, String> {
+    std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .ok_or_else(|| "The current user's home directory is unavailable".to_owned())
+}
+
+fn pictures_directory() -> Result<PathBuf, String> {
+    Ok(home_directory()?.join("Pictures"))
+}
+
+fn recent_photos(pictures: &Path) -> Result<Vec<RecentPhoto>, String> {
+    let mut child = Command::new("/usr/bin/mdfind")
+        .arg("-onlyin")
+        .arg(pictures)
+        .arg(PHOTO_SPOTLIGHT_QUERY)
+        .stdout(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("Could not query the local photo index: {error}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or("Spotlight photo output is unavailable")?;
+    let mut photos = Vec::new();
+    for path in BufReader::new(stdout)
+        .lines()
+        .map_while(Result::ok)
+        .take(MAX_SPOTLIGHT_CANDIDATES)
+    {
+        let path = PathBuf::from(path);
+        let Ok(path) = path.canonicalize() else {
+            continue;
+        };
+        let Ok(metadata) = fs::metadata(&path) else {
+            continue;
+        };
+        if !metadata.is_file() || !path.starts_with(pictures) {
+            continue;
+        }
+        let Some(name) = path.file_name().and_then(|name| name.to_str()) else {
+            continue;
+        };
+        photos.push((
+            metadata.modified().unwrap_or(SystemTime::UNIX_EPOCH),
+            RecentPhoto {
+                name: name.to_owned(),
+                path: path.to_string_lossy().into_owned(),
+            },
+        ));
+    }
+    let status = child
+        .wait()
+        .map_err(|error| format!("Could not finish the local photo query: {error}"))?;
+    if !status.success() {
+        return Err("The local photo query did not complete".to_owned());
+    }
+    photos.sort_by_key(|entry| std::cmp::Reverse(entry.0));
+    Ok(photos.into_iter().take(6).map(|(_, photo)| photo).collect())
 }
 
 fn recent_file(path: PathBuf, home: &Path, cutoff: SystemTime) -> Option<(SystemTime, RecentFile)> {
@@ -155,6 +251,76 @@ pub async fn local_recent_files() -> Result<Vec<RecentFile>, String> {
     tauri::async_runtime::spawn_blocking(recent_files_command)
         .await
         .map_err(|error| format!("Local file search failed: {error}"))?
+}
+
+#[tauri::command]
+pub fn local_pictures_access_granted(access: State<'_, PictureAccess>) -> bool {
+    access.selected().is_ok()
+}
+
+#[tauri::command]
+pub fn local_user_first_name() -> Option<String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CStr;
+        let full_name = objc2_foundation::NSFullUserName();
+        let value = unsafe { CStr::from_ptr(full_name.UTF8String()) }.to_string_lossy();
+        value.split_whitespace().next().map(str::to_owned)
+    }
+    #[cfg(not(target_os = "macos"))]
+    None
+}
+
+#[tauri::command]
+pub async fn local_recent_photos(
+    access: State<'_, PictureAccess>,
+) -> Result<Vec<RecentPhoto>, String> {
+    let pictures = access.selected()?;
+    tauri::async_runtime::spawn_blocking(move || recent_photos(&pictures))
+        .await
+        .map_err(|error| format!("Local photo search failed: {error}"))?
+}
+
+#[tauri::command]
+pub async fn request_pictures_access(
+    app: tauri::AppHandle,
+    access: State<'_, PictureAccess>,
+) -> Result<bool, String> {
+    use tauri_plugin_dialog::DialogExt;
+
+    let pictures = pictures_directory()?;
+    let (sender, receiver) = tokio::sync::oneshot::channel();
+    app.dialog()
+        .file()
+        .set_title("Choose your Pictures folder for local photo previews")
+        .set_directory(&pictures)
+        .pick_folder(move |selected| {
+            let _ = sender.send(selected.and_then(|path| path.into_path().ok()));
+        });
+    let Some(selected) = receiver
+        .await
+        .map_err(|error| format!("The Pictures folder dialog failed: {error}"))?
+    else {
+        return Ok(false);
+    };
+    let selected = selected
+        .canonicalize()
+        .map_err(|error| format!("Could not verify the selected folder: {error}"))?;
+    if selected != pictures.canonicalize().map_err(|error| error.to_string())? {
+        return Err("Select your Pictures folder to grant photo access".to_owned());
+    }
+    let saved = app
+        .path()
+        .app_config_dir()
+        .map_err(|error| error.to_string())?
+        .join("pictures-folder");
+    let parent = saved
+        .parent()
+        .ok_or("App settings location is unavailable")?;
+    fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    fs::write(saved, selected.to_string_lossy().as_bytes()).map_err(|error| error.to_string())?;
+    access.grant(selected)?;
+    Ok(true)
 }
 
 #[tauri::command]
@@ -279,18 +445,27 @@ fn settings_label(name: &str, bundle_id: &str) -> Option<(&'static str, &'static
 #[cfg(test)]
 mod tests {
     use super::{
-        discover_in, is_settings_bundle_id, settings_label, settings_url, SPOTLIGHT_QUERY,
+        discover_in, is_settings_bundle_id, settings_label, settings_url, PictureAccess,
+        PHOTO_SPOTLIGHT_QUERY, SPOTLIGHT_QUERY,
     };
     use plist::{Dictionary, Value};
     use std::fs;
     use std::fs::{File, FileTimes};
     use std::path::PathBuf;
+    use std::sync::Mutex;
     use std::time::{Duration, SystemTime};
 
     #[test]
     fn spotlight_query_limits_files_to_the_last_seven_days() {
         assert!(SPOTLIGHT_QUERY.contains("$time.now(-604800)"));
         assert!(SPOTLIGHT_QUERY.contains("public.data"));
+    }
+
+    #[test]
+    fn photo_query_limits_results_to_recent_images_and_requires_user_selection() {
+        assert!(PHOTO_SPOTLIGHT_QUERY.contains("$time.now(-604800)"));
+        assert!(PHOTO_SPOTLIGHT_QUERY.contains("public.image"));
+        assert!(PictureAccess(Mutex::new(None)).selected().is_err());
     }
 
     #[test]

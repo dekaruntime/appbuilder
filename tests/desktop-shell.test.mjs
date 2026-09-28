@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 test('static export opens on the computer graph shell', () => {
@@ -10,7 +10,7 @@ test('static export opens on the computer graph shell', () => {
   assert.match(html, /Ask <span class="v">computer<\/span> anything/);
   assert.match(html, /aria-label="Ask computer anything"/);
   assert.match(html, /src="\/desktop-auth\.js"/);
-  assert.match(html, /Good afternoon, Sami/);
+  assert.match(readFileSync('src/app/page.tsx', 'utf8'), /hour < 12 \? 'Good morning' : hour < 18 \? 'Good afternoon' : 'Good evening'/);
   assert.match(html, /Recent files/);
   assert.match(html, /Recent photos/);
   assert.doesNotMatch(html, /Download link|marketing homepage/i);
@@ -27,18 +27,43 @@ test('desktop auth uses the loopback account commands', () => {
   assert.match(native, /dev\.zega\.desktop/);
 });
 
-test('computer data comes from local Spotlight and machine-discovered settings panes', () => {
+test('product source contains no sample data from the design mock', () => {
+  const sourceFiles = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const path = `${directory}/${entry.name}`;
+    return entry.isDirectory() ? sourceFiles(path) : /\.(tsx?|jsx?)$/.test(entry.name) ? [path] : [];
+  });
+  const sampleData = ['Lisbon itinerary', 'Bow River', 'Good afternoon, Sami', 'zega pitch — Sept.key'];
+  for (const file of sourceFiles('src')) {
+    const source = readFileSync(file, 'utf8');
+    for (const sample of sampleData) assert.ok(!source.includes(sample), `${sample} must not appear in ${file}`);
+  }
+});
+
+test('landing shelves use only local results, permission state, and a dynamic greeting', () => {
   const page = readFileSync('src/app/page.tsx', 'utf8');
-  const local = readFileSync('src-tauri/src/local.rs', 'utf8').split('#[cfg(test)]')[0];
-  assert.match(page, /invoke<LocalFile\[]>\('local_recent_files'\)/);
-  assert.match(page, /invoke<LocalPane\[]>\('local_settings_panes'\)/);
-  assert.match(page, /open_settings_pane/);
-  assert.match(page, /Preview placeholder/);
-  assert.match(local, /kMDItemContentModificationDate >= \$time\.now\(-604800\)/);
-  assert.match(local, /\.arg\("-onlyin"\)/);
-  assert.match(local, /Value::from_file\(info\)/);
-  assert.match(local, /x-apple\.systempreferences:/);
-  assert.doesNotMatch(local, /com\.apple\.preference\.(network|sound|displays)/);
+  const local = readFileSync('src-tauri/src/local.rs', 'utf8');
+  const native = readFileSync('src-tauri/src/lib.rs', 'utf8');
+  const config = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+  assert.match(page, /local_recent_files/);
+  assert.match(page, /local_user_first_name/);
+  assert.match(page, /Good morning/);
+  assert.match(page, /Good afternoon/);
+  assert.match(page, /Good evening/);
+  assert.match(page, /No recent files yet/);
+  assert.match(page, /Loading recent files/);
+  assert.match(page, /local_recent_photos/);
+  assert.match(page, /Choose Pictures folder/);
+  assert.match(page, /convertFileSrc\(photo\.path\)/);
+  assert.doesNotMatch(page, /aria-label="Speak"|Good afternoon, Sami/);
+  assert.match(local, /NSFullUserName/);
+  assert.match(local, /public\.image/);
+  assert.match(local, /request_pictures_access/);
+  assert.match(local, /set_directory\(&pictures\)/);
+  assert.match(local, /canonicalize\(\)/);
+  assert.match(native, /local_user_first_name/);
+  assert.match(native, /tauri_plugin_dialog::init/);
+  assert.equal(config.app.security.assetProtocol.enable, true);
+  assert.deepEqual(config.app.security.assetProtocol.scope, ['$PICTURE/**']);
 });
 
 test('the main window capability permits its draggable title bar', () => {
