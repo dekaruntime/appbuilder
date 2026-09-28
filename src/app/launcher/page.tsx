@@ -1,7 +1,5 @@
 'use client';
 
-import ShortcutHint from '../../components/ShortcutHint';
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -133,10 +131,9 @@ export default function FloatingSearch() {
         event.preventDefault();
         void getCurrentWindow().startDragging().catch(error => console.error('Could not move search window', error));
       }
-    }}><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span><span className="tb-sp"/><ShortcutHint /></header>
+    }}><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span></header>
     <form className="search float-search" role="search" onSubmit={event => { event.preventDefault(); if (results[active]) void open(results[active]); }}>
       <input ref={input} aria-label="Search this Mac" autoComplete="off" spellCheck={false} placeholder="Ask computer anything…" value={query} onChange={event => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKeyDown}/>
-      <button className="round go" type="submit" aria-label="Open selected result">↵</button>
     </form>
     <div className="lres" role="listbox" aria-label="Local results">
       {renderGroup('Settings', settingsResults)}

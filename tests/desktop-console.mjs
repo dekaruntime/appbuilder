@@ -125,11 +125,18 @@ try {
     assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), before + 1, `${selector} starts a native drag`);
   }
   const drags = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
-  await launcher.locator('.lhead .kbd').dispatchEvent('mousedown', { button: 0 });
+  assert.equal(await launcher.locator('.lhead .kbd').count(), 0, 'the panel header has no shortcut badge');
+  assert.equal(await launcher.getByRole('button', {name: 'Open selected result'}).count(), 0, 'search needs no submit button');
+  assert.equal(await input.evaluate(element => getComputedStyle(element).fontSize), '20px', 'search text includes both requested three-pixel increases');
   await input.dispatchEvent('mousedown', { button: 0 });
   await launcher.locator('.lhead').dispatchEvent('mousedown', { button: 2 });
   assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), drags, 'search editing and right-click do not drag the window');
   await launcher.screenshot({ path: '.tmp/desktop-agent-launcher.png' });
+  await input.fill('Downloads');
+  await launcher.waitForFunction(() => document.querySelectorAll('.float-group .lrow').length === 1);
+  assert.equal(await launcher.getByText('Local fixture.txt').count(), 1, 'typing filters results without submitting');
+  await input.fill('');
+  await launcher.waitForFunction(() => document.querySelectorAll('.float-group .lrow').length === 2);
   await input.press('ArrowDown');
   await input.press('Enter');
   await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'open_local_file'));
@@ -146,7 +153,7 @@ try {
   commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
   assert.ok(commands.includes('show_main_window'), 'Command+Return is the explicit main-window action');
   assert.equal(await launcher.evaluate(() => window.mainVisible), true);
-  for (const target of ['input', '.lhead .kbd', '.float-group .lrow', '.lfoot .local-note']) {
+  for (const target of ['input', '.float-group .lrow', '.lfoot .local-note']) {
     await launcher.reload({ waitUntil: 'networkidle' });
     await launcher.getByText('Local fixture.txt').first().waitFor();
     if (target === '.lfoot .local-note') await launcher.locator(target).click();
@@ -162,7 +169,12 @@ try {
   await launcher.getByText('Local fixture.txt').first().waitFor();
   assert.notEqual(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'Other Linux desktops retain rounded corners');
   const linuxBackground = await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor);
-  assert.match(linuxBackground, /\/\s*0\.92\)/, 'Linux needs a readable translucent surface without macOS material');
+  assert.match(linuxBackground, /\/\s*0\.97\)/, 'Linux needs a readable translucent surface without macOS material');
+  await launcher.emulateMedia({ colorScheme: 'dark' });
+  assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).getPropertyValue('--panel').trim().toLowerCase()), '#161e26', 'system dark mode uses the dark search surface');
+  assert.notEqual(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor), linuxBackground, 'the search surface changes when system appearance changes');
+  await launcher.emulateMedia({ colorScheme: 'light' });
+  assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor), linuxBackground, 'system light mode restores the light search surface');
   assert.match(await launcher.locator('.float-root').evaluate(element => getComputedStyle(element).backgroundColor), /0, 0, 0, 0|transparent/, 'Linux keeps the rounded corners transparent');
   await launcher.goto('http://localhost:1421/launcher/?platform=linux&omarchy=1', { waitUntil: 'networkidle' });
   assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'Omarchy uses square panel corners');

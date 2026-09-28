@@ -91,7 +91,7 @@ fn search_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Some(window) = app.get_webview_window("launcher") {
         return Ok(window);
     }
-    WebviewWindowBuilder::new(
+    let window = WebviewWindowBuilder::new(
         app,
         "launcher",
         // With `trailingSlash`, `/launcher/` works against Next's dev server
@@ -119,7 +119,9 @@ fn search_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     )
     .visible(false)
     .center()
-    .build()
+    .build()?;
+    crate::window_placement::prepare(&window)?;
+    Ok(window)
 }
 
 #[tauri::command]

@@ -5613,6 +5613,7 @@ dependencies = [
  "futures-util",
  "gdk",
  "getrandom 0.2.17",
+ "gtk",
  "keyring",
  "notify",
  "objc2",

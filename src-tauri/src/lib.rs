@@ -15,6 +15,7 @@ mod shortcut_config;
 #[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
 mod shortcut_portal;
 mod shortcut_setup;
+mod window_placement;
 
 use account::AccountState;
 use std::sync::Arc;

@@ -3,8 +3,8 @@
 Default: **Option+Space on macOS; Alt+Space on Windows; Super+Z on Linux**. It is a
 starting point, not a promise that every desktop leaves those keys free.
 
-Open **Search shortcut…** in zega's tray menu, or click the shortcut badge in
-search. The setup is bundled, works offline, and does not send computer data
+Open **Search shortcut…** in zega's tray menu.
+The setup is bundled, works offline, and does not send computer data
 anywhere. It opens on first launch and when registration fails. `--autostart`
 keeps the main window and setup hidden at login.
 
