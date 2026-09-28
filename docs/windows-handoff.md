@@ -7,8 +7,9 @@ for physical keyboard tests.
 ## Starting point
 
 - Private repository: `zegadb/desktop`.
-- Fetch and check out existing branch `codex/hotkey-5`, PR #6. Search cleanup
-  and GNOME placement landed on that branch in `68646d4`; fetch its latest tip.
+- Fetch and check out existing branch `codex/hotkey-5`, PR #6. Latest product
+  commit at handoff is `1142117` (20px search input); fetch the latest branch tip
+  to include this document's updates as well.
 - PR stack: #2 scaffold → #4 local data → #6 launcher and shortcut setup.
 - Omarchy palette work is a separate draft, PR #8 / `codex/omarchy-theme-7`.
 - Read applicable local `AGENTS.md` files and `docs/shortcuts/README.md` first.
@@ -17,6 +18,10 @@ for physical keyboard tests.
 - Preserve existing changes. One heavy build at a time; logs, temporary files
   and build output stay in the clone. Screenshots are PR comment attachments,
   never committed. Sign PR bodies/comments and reports `-codex`.
+- Keep the configured Git identity; never add attribution or signatures to
+  commits. Never read, print, set or transfer secrets. Missing credentials are
+  `Needs Sami: <name>`. Browser automation must be headless. Stop only process
+  IDs this session started; never use broad process-name termination.
 
 ## First session
 
@@ -56,6 +61,7 @@ occupied. Do not change Windows or other apps' shortcuts automatically.
 - Tray click opens the same floating, centered search. Drag the header.
   Corners stay rounded on Windows; no opaque outer rectangle.
 - Search has **20px text**, no top-right shortcut badge, no submit arrow.
+  Windows/Linux surfaces are **97% opaque**, with transparent outer corners.
   Typing filters; Enter acts; Escape closes with input, row or background focus.
 - Main remains hidden for normal search actions. Explicit Open zega opens it;
   closing main keeps the agent alive. Check Windows modifier handling rather
@@ -71,10 +77,31 @@ occupied. Do not change Windows or other apps' shortcuts automatically.
   parity is not done. Never add sample files to make an empty screen look live.
 - Sami confirmed Ubuntu shortcut/setup tests work. A GNOME placement fix is
   now running there; final visual centering confirmation is pending.
+- Sami accepted the 20px input and said the appearance is good now. Ubuntu
+  reports its Default/Yaru light appearance; no system theme was changed.
+  Check Windows light/dark changes in the actual app, not only a browser fixture.
 - Omarchy Super+Z, floating/square search and Escape fixes are in #6. Theme
   matching is in #8; final native palette acceptance waits for that laptop.
 - PR screenshot attachment upload was unavailable on bugsy. Local screenshots
   are evidence files, not uploaded attachments; don't claim otherwise.
 - Apple Developer ID / notarization is a later Sami dependency.
+
+## Evidence already collected
+
+- Product commit `1142117` is pushed to PR #6; no PRs were merged.
+- macOS check/clippy, headless console regression and static export: exit 0.
+- Ubuntu embedded native build: exit 0. Actual WebKit accessibility check
+  `tests/linux-search-input.py <PID>`: old font fails (exit 1, 13pt), new font
+  passes (exit 0, 15pt / 20 CSS px), input focused and no submit arrow.
+- Native GNOME placement protocol check: hint removed fails (exit 1), restored
+  passes (exit 0). This proves the compositor request, not final coordinates.
+- Browser checks cover filtering while typing, selected-file action without
+  showing main, Escape across focus targets, native drag IPC, zero console
+  errors and light/dark media changes. They do not replace Windows acceptance.
+
+Do not connect to or stop apps on the other machines from this Windows session.
+The Ubuntu app is intentionally left open for Sami. Do not copy the local,
+untracked bugsy `HANDOFF.md` into the product; this document and the GitHub issue
+are the portable handoff.
 
 -codex
