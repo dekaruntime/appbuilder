@@ -1,5 +1,6 @@
 //! Exclusive registration arbitrates with other apps, not macOS symbolic hotkeys.
 //! Detect reserved system shortcuts separately so setup never claims otherwise.
+use crate::shortcut_config::Binding;
 use std::{
     cell::{Cell, RefCell},
     ffi::c_void,
@@ -85,10 +86,12 @@ thread_local! {
     static REGISTRATION: RefCell<Option<Registration>> = const { RefCell::new(None) };
 }
 
-pub fn install(app: &AppHandle) -> Result<(), String> {
+pub fn install(app: &AppHandle, shortcut: &Binding) -> Result<(), String> {
     let _main =
         objc2::MainThreadMarker::new().ok_or("Shortcut setup must run on the main thread")?;
-    let system_conflict = system_shortcut_conflict()?;
+    if system_shortcut_conflict(shortcut)? {
+        return Err(format!("macOS already uses {}. Change that binding in System Settings → Keyboard → Keyboard Shortcuts, then retry in Shortcut setup. You can still open search by clicking its menu-bar icon.", shortcut.label()));
+    }
     let mut context = Box::new(Context {
         app: app.clone(),
         pressed: Cell::new(false),
@@ -120,10 +123,10 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
         if status != 0 {
             return Err(format!("Cannot install shortcut handler ({status})"));
         }
-        // kVK_Space, cmdKey | optionKey, kEventHotKeyExclusive.
+        // The same bundled default drives registration, system checks and UI hints.
         let status = RegisterEventHotKey(
-            49,
-            (1 << 8) | (1 << 11),
+            shortcut.mac_key_code()?,
+            shortcut.mac_modifiers(),
             HotKeyId {
                 signature: SIGNATURE,
                 id: 1,
@@ -134,7 +137,7 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
         );
         if status != 0 {
             RemoveEventHandler(handler);
-            return Err(format!("⌘⌥Space is owned by another app ({status}). Quit that app and restart zega; tray search is still available."));
+            return Err(format!("{} could not be registered ({status}); another app may already use it. Change or disable its shortcut, then retry in Shortcut setup. You can still open search by clicking its menu-bar icon.", shortcut.label()));
         }
     }
     REGISTRATION.with(|slot| {
@@ -144,13 +147,10 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
             _context: context,
         })
     });
-    if system_conflict {
-        return Err("macOS also uses ⌘⌥Space. Open System Settings → Keyboard → Keyboard Shortcuts and remove that binding (normally Spotlight → Show Finder search window). The tray still opens zega search.".into());
-    }
     Ok(())
 }
 
-fn system_shortcut_conflict() -> Result<bool, String> {
+fn system_shortcut_conflict(shortcut: &Binding) -> Result<bool, String> {
     use objc2::rc::Retained;
     use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString};
     let mut keys = ptr::null_mut();
@@ -170,12 +170,12 @@ fn system_shortcut_conflict() -> Result<bool, String> {
     Ok(keys.iter().any(|key| {
         key.objectForKey(&enabled)
             .is_some_and(|value| value.boolValue())
-            && key
-                .objectForKey(&code)
-                .is_some_and(|value| value.unsignedIntValue() == 49)
+            && key.objectForKey(&code).is_some_and(|value| {
+                value.unsignedIntValue() == shortcut.mac_key_code().unwrap_or(u32::MAX)
+            })
             && key
                 .objectForKey(&modifiers)
-                .is_some_and(|value| value.unsignedIntValue() == (1 << 8) | (1 << 11))
+                .is_some_and(|value| value.unsignedIntValue() == shortcut.mac_modifiers())
     }))
 }
 
@@ -206,7 +206,7 @@ unsafe extern "C" fn on_hotkey(_: Handle, event: Handle, context: Handle) -> i32
             let app = context.app.clone();
             let _ = context
                 .app
-                .run_on_main_thread(move || crate::menu::toggle_search_window(&app));
+                .run_on_main_thread(move || crate::shortcut_setup::activated(&app));
         }
         6 => context.pressed.set(false),
         _ => {}

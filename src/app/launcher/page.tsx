@@ -1,5 +1,7 @@
 'use client';
 
+import ShortcutHint from '../../components/ShortcutHint';
+
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -102,7 +104,7 @@ export default function FloatingSearch() {
     {rows.map(result => {
       resultIndex += 1;
       const index = resultIndex;
-      return <button key={`${result.kind}:${result.label}`} className={`lrow ${index === active ? 'sel' : ''}`} type="button" role="option" aria-selected={index === active} onMouseEnter={() => setActive(index)} onClick={() => void open(result)}>
+      return <button key={result.kind === 'file' ? `file:${result.path}` : `setting:${result.bundleId}`} className={`lrow ${index === active ? 'sel' : ''}`} type="button" role="option" aria-selected={index === active} onMouseEnter={() => setActive(index)} onClick={() => void open(result)}>
         <span className={result.kind === 'setting' ? 'gear' : `fi ${result.icon.toLowerCase()}`}>{result.icon}</span>
         <span><b>{result.label}</b><small>{result.detail}</small></span>
         <span className="hint">↵</span>
@@ -116,7 +118,7 @@ export default function FloatingSearch() {
         event.preventDefault();
         void getCurrentWindow().startDragging().catch(error => console.error('Could not move search window', error));
       }
-    }}><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span><span className="tb-sp"/><span className="kbd">⌘⌥ Space</span></header>
+    }}><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span><span className="tb-sp"/><ShortcutHint /></header>
     <form className="search float-search" role="search" onSubmit={event => { event.preventDefault(); if (results[active]) void open(results[active]); }}>
       <input ref={input} aria-label="Search this Mac" autoComplete="off" spellCheck={false} placeholder="Ask computer anything…" value={query} onChange={event => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKeyDown}/>
       <button className="round go" type="submit" aria-label="Open selected result">↵</button>

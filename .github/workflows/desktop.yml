@@ -9,7 +9,7 @@ on:
       - 'src/**'
       - 'public/desktop-auth.js'
       - 'scripts/copy-maplibre-worker.mjs'
-      - 'tests/desktop-shell.test.mjs'
+      - 'tests/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/desktop.yml'
@@ -19,7 +19,7 @@ on:
       - 'src/**'
       - 'public/desktop-auth.js'
       - 'scripts/copy-maplibre-worker.mjs'
-      - 'tests/desktop-shell.test.mjs'
+      - 'tests/**'
       - 'package.json'
       - 'package-lock.json'
       - '.github/workflows/desktop.yml'
@@ -62,6 +62,7 @@ jobs:
       # Catch hydration and runtime errors in a real headless browser load.
       - run: npx playwright install chromium
       - run: npm run test:desktop:console
+      - run: npm run test:desktop:setup
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: '1.96.0'

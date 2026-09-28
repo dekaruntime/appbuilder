@@ -24,7 +24,12 @@ try {
     await delay(250);
   }
   assert.ok(claimed, 'zega must hold an exclusive shortcut against other applications');
-  console.log('PASS: zega owns Command+Option+Space exclusively');
+  console.log('PASS: zega owns Option+Space exclusively');
+  const second = spawnSync(resolve(process.argv[2]), [], { timeout: 10_000, stdio: ['ignore', log, log] });
+  assert.equal(second.status, 0, 'a second launch must route to the first process and exit');
+  assert.equal(app.exitCode, null, 'the original agent stays alive');
+  assert.equal(claimKey().status, 1, 'the original shortcut remains registered');
+  console.log('PASS: launching twice keeps one agent and its shortcut');
 } finally {
   // Only stop the app process created by this test.
   if (app.exitCode === null) app.kill('SIGTERM');

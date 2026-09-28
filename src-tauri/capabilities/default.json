@@ -2,6 +2,6 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "default capability for the desktop shell",
-  "windows": ["main", "launcher"],
+  "windows": ["main", "launcher", "shortcut-setup"],
   "permissions": ["core:default", "core:window:allow-start-dragging", "opener:default"]
 }

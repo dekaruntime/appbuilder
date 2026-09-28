@@ -1,5 +1,7 @@
 'use client';
 
+import ShortcutHint from '../components/ShortcutHint';
+
 import { useEffect, useMemo, useState } from 'react';
 import { convertFileSrc, invoke, isTauri } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
@@ -78,7 +80,7 @@ export default function Home() {
   const searchBox = () => <form className="search" role="search" onSubmit={event => { event.preventDefault(); search(); }}>
     <span className={`ph ${query ? 'typed' : ''}`}>{query || <>Ask <span className="v">{graph}</span> anything…</>}</span>
     <input aria-label={`Ask ${graph} anything`} placeholder={`Ask ${graph} anything…`} value={query} onChange={event => setQuery(event.target.value)} autoComplete="off" />
-    <span className="kbd">⌘⌥ Space</span><button className="round go" aria-label="Search">→</button>
+    <ShortcutHint /><button className="round go" aria-label="Search">→</button>
   </form>;
   const photoShelf = <div className="shelf"><h3>Recent photos</h3>{photoAccess === 'checking' ? <div className="skeleton" aria-label="Loading recent photos" /> : photoAccess === 'required' ? <div className="empty"><p>Allow access to your Pictures folder to show recent photos. Your photos stay on this Mac.</p><button type="button" disabled={requestingAccess} onClick={() => void requestPhotos()}>{requestingAccess ? 'Waiting for permission…' : 'Choose Pictures folder'}</button></div> : photoAccess === 'error' ? <div className="empty"><p>Photos could not be loaded from Pictures.</p><button type="button" onClick={() => void refreshPhotos()}>Try again</button></div> : photos.length ? <div className="photos">{photos.map(photo => <figure className="photo-tile" key={photo.path}><img src={convertFileSrc(photo.path)} alt={photo.name} /><figcaption>{photo.name}</figcaption></figure>)}</div> : <p className="empty">No recent photos yet.</p>}</div>;
 

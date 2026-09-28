@@ -9,9 +9,16 @@ pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     set_accessory_policy(app);
     let search = MenuItem::with_id(app, "search", "Search", true, None::<&str>)?;
     let main = MenuItem::with_id(app, "main", "Open zega", true, None::<&str>)?;
+    let setup = MenuItem::with_id(
+        app,
+        "shortcut-setup",
+        "Search shortcut…",
+        true,
+        None::<&str>,
+    )?;
     let divider = PredefinedMenuItem::separator(app)?;
     let quit = PredefinedMenuItem::quit(app, None)?;
-    let menu = Menu::with_items(app, &[&search, &main, &divider, &quit])?;
+    let menu = Menu::with_items(app, &[&search, &main, &setup, &divider, &quit])?;
 
     TrayIconBuilder::new()
         .icon(tray_image())
@@ -22,6 +29,9 @@ pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
         .on_menu_event(|app, event| match event.id().as_ref() {
             "search" => toggle_search_window(app),
             "main" => show_main_window(app.clone()),
+            "shortcut-setup" => {
+                let _ = crate::shortcut_setup::show_shortcut_setup(app.clone());
+            }
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -54,6 +64,15 @@ pub fn toggle_search_window(app: &AppHandle) {
         Ok(())
     })();
     let _ = result;
+}
+
+#[tauri::command]
+pub fn open_search_window(app: AppHandle) -> Result<(), String> {
+    let window = search_window(&app).map_err(|e| e.to_string())?;
+    window.show().map_err(|e| e.to_string())?;
+    window.set_focus().map_err(|e| e.to_string())?;
+    activate_search_window(&app);
+    app.emit("launcher-opened", ()).map_err(|e| e.to_string())
 }
 
 #[cfg(target_os = "macos")]

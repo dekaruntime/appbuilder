@@ -48,8 +48,13 @@ try {
   await localPage.addInitScript(() => {
     let picturesGranted = false;
     window.isTauri = true;
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
     window.__TAURI_INTERNALS__ = {
+      transformCallback: () => 1,
       invoke: async command => {
+        if (command === 'plugin:event|listen') return 1;
+        if (command === 'plugin:event|unlisten') return null;
+        if (command === 'shortcut_status') return { registered: true, label: '⌥Space' };
         if (command === 'local_recent_files') return [{ name: 'fixture.txt', location: 'Documents', fileType: 'TXT', modifiedLabel: '2 min ago', path: '/Users/test/Documents/fixture.txt' }];
         if (command === 'local_settings_panes') return [];
         if (command === 'local_user_first_name') return 'Test';
@@ -75,6 +80,7 @@ try {
   launcher.on('pageerror', error => launcherErrors.push(error.message));
   await launcher.addInitScript(() => {
     window.isTauri = true;
+    window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
     window.mockCommands = [];
     window.mainVisible = false;
     const callbacks = [];
@@ -89,7 +95,7 @@ try {
         if (command === 'local_recent_files') return [{
           name: 'Local fixture.txt', location: 'Documents', fileType: 'TXT',
           modifiedLabel: 'Just now', path: '/Users/example/Documents/Local fixture.txt',
-        }];
+        }, { name: 'Local fixture.txt', location: 'Downloads', fileType: 'TXT', modifiedLabel: 'Just now', path: '/Users/example/Downloads/Local fixture.txt' }];
         if (command === 'local_settings_panes') return [];
         return null;
       },
@@ -97,7 +103,8 @@ try {
   });
   await launcher.goto('http://localhost:1421/launcher/', { waitUntil: 'networkidle' });
   const input = launcher.getByRole('textbox', { name: 'Search this Mac' });
-  await launcher.getByText('Local fixture.txt').waitFor();
+  await launcher.getByText('Local fixture.txt').first().waitFor();
+  assert.equal(await launcher.getByText('Local fixture.txt').count(), 2, 'same-named files from different folders remain separate results');
   const rootBackground = await launcher.locator('.float-root').evaluate(element => getComputedStyle(element).backgroundColor);
   assert.match(rootBackground, /0, 0, 0, 0|transparent/);
   const panelBackground = await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor);
@@ -109,20 +116,23 @@ try {
     assert.ok(footer.y >= 0 && footer.y + footer.height <= height, 'keyboard hints stay inside the window');
     assert.equal(await launcher.evaluate(() => document.documentElement.scrollHeight), height);
   }
-  for (const selector of ['.lhead', '.float-word .v', '.lhead .kbd', '.lhead .gi']) {
+  for (const selector of ['.lhead', '.float-word .v', '.lhead .gi']) {
     const before = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
     await launcher.locator(selector).dispatchEvent('mousedown', { button: 0 });
     assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), before + 1, `${selector} starts a native drag`);
   }
   const drags = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
+  await launcher.locator('.lhead .kbd').dispatchEvent('mousedown', { button: 0 });
   await input.dispatchEvent('mousedown', { button: 0 });
   await launcher.locator('.lhead').dispatchEvent('mousedown', { button: 2 });
   assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), drags, 'search editing and right-click do not drag the window');
   await launcher.screenshot({ path: '.tmp/desktop-agent-launcher.png' });
+  await input.press('ArrowDown');
   await input.press('Enter');
   await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'open_local_file'));
   let commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
   assert.ok(commands.includes('open_local_file'));
+  assert.equal(await launcher.evaluate(() => window.mockCommands.find(([name]) => name === 'open_local_file')[1].path), '/Users/example/Downloads/Local fixture.txt', 'the selected duplicate name opens its own file path');
   assert.ok(commands.includes('hide_search_window'));
   assert.ok(!commands.includes('show_main_window'), 'opening a local result never shows zega');
   assert.equal(await launcher.evaluate(() => window.mainVisible), false);

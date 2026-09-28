@@ -431,6 +431,8 @@ fn settings_label(name: &str, bundle_id: &str) -> Option<(&'static str, &'static
     let identity = format!("{name} {bundle_id}").to_ascii_lowercase();
     if identity.contains("appearance") || identity.contains("general") {
         Some(("Dark mode", "◐"))
+    } else if identity.contains("keyboard") {
+        Some(("Keyboard", "⌨"))
     } else if identity.contains("sound") {
         Some(("Sound", "🔈"))
     } else if identity.contains("display") {

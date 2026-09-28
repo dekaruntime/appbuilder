@@ -15,7 +15,8 @@
     "test:desktop": "node --test tests/desktop-shell.test.mjs",
     "test:desktop:console": "node tests/desktop-console.mjs",
     "tauri": "tauri",
-    "test:desktop:shortcut": "node tests/macos-shortcut.mjs .target/release/bundle/macos/zega.app/Contents/MacOS/zega-desktop"
+    "test:desktop:shortcut": "node tests/macos-shortcut.mjs .target/release/bundle/macos/zega.app/Contents/MacOS/zega-desktop",
+    "test:desktop:setup": "node tests/shortcut-setup.mjs"
   },
   "dependencies": {
     "@fontsource-variable/figtree": "^5.3.0",

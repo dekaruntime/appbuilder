@@ -83,8 +83,7 @@ test('floating search is a local Tauri window with keyboard result actions', () 
   assert.match(native, /always_on_top\(true\)/);
   assert.match(native, /WebviewUrl::App\("launcher\/"\.into\(\)\)/);
   assert.match(readFileSync('next.config.ts', 'utf8'), /trailingSlash: true/);
-  assert.match(app, /with_shortcuts\(\["super\+alt\+Space"\]\)/);
-  assert.match(app, /Modifiers::ALT \| Modifiers::SUPER, Code::Space/);
+  assert.match(readFileSync('src-tauri/src/shortcut_setup.rs', 'utf8'), /on_shortcut\(binding.accelerator\(\).as_str\(\)/);
   assert.match(native, /\.transparent\(true\)/);
   assert.equal(JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).app.macOSPrivateApi, true);
   assert.match(readFileSync('src/app/globals.css', 'utf8'), /\.float-root[^\n]*background: transparent/);

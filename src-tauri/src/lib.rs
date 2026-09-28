@@ -4,6 +4,10 @@ mod loopback;
 mod menu;
 #[cfg(target_os = "macos")]
 mod shortcut;
+mod shortcut_config;
+#[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
+mod shortcut_portal;
+mod shortcut_setup;
 
 use account::AccountState;
 use std::sync::Arc;
@@ -12,23 +16,15 @@ use tauri::Manager;
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     let builder = tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            if args.iter().any(|arg| arg == "--shortcut-setup") {
+                let _ = shortcut_setup::show_shortcut_setup(app.clone());
+            } else if !args.iter().any(|arg| arg == "--autostart") {
+                let _ = menu::open_search_window(app.clone());
+            }
+        }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init());
-    #[cfg(not(target_os = "macos"))]
-    let builder = builder.plugin(
-        tauri_plugin_global_shortcut::Builder::new()
-            .with_shortcuts(["super+alt+Space"])
-            .expect("the fixed global shortcut is valid")
-            .with_handler(|app, shortcut, event| {
-                use tauri_plugin_global_shortcut::{Code, Modifiers, ShortcutState};
-                if event.state == ShortcutState::Pressed
-                    && shortcut.matches(Modifiers::ALT | Modifiers::SUPER, Code::Space)
-                {
-                    menu::toggle_search_window(app);
-                }
-            })
-            .build(),
-    );
     builder
         .invoke_handler(tauri::generate_handler![
             account::account_start,
@@ -45,22 +41,27 @@ pub fn run() {
             local::open_settings_pane,
             menu::hide_search_window,
             menu::show_main_window,
+            menu::open_search_window,
+            shortcut_setup::shortcut_status,
+            shortcut_setup::shortcut_apply,
+            shortcut_setup::shortcut_begin_test,
+            shortcut_setup::shortcut_confirm,
+            shortcut_setup::show_shortcut_setup,
         ])
         .setup(|app| {
             menu::install_tray(app.handle())?;
-            #[cfg(target_os = "macos")]
-            if let Err(error) = shortcut::install(app.handle()) {
-                use tauri_plugin_dialog::DialogExt;
-                app.dialog()
-                    .message(error)
-                    .title("Search shortcut unavailable")
-                    .show(|_| {});
-            }
             app.manage(local::SettingsIndex::discover());
             app.manage(local::PictureAccess::load(app.handle()));
             let handle = app.handle().clone();
             let state = AccountState::new(handle).map_err(|error| error.to_string())?;
             app.manage(Arc::new(state));
+            let first_launch = shortcut_setup::initialize(app.handle())?;
+            let login_launch = std::env::args().any(|arg| arg == "--autostart");
+            if (first_launch || std::env::args().any(|arg| arg == "--shortcut-setup"))
+                && !login_launch
+            {
+                shortcut_setup::show_shortcut_setup(app.handle().clone())?;
+            }
             Ok(())
         })
         .on_window_event(|window, event| {
@@ -74,9 +75,9 @@ pub fn run() {
         })
         .build(tauri::generate_context!())
         .expect("error while building zega desktop")
-        .run(|_app, event| {
+        .run(|_app, _event| {
             #[cfg(target_os = "macos")]
-            if matches!(event, tauri::RunEvent::Exit) {
+            if matches!(_event, tauri::RunEvent::Exit) {
                 shortcut::uninstall();
             }
         });
