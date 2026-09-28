@@ -10,20 +10,10 @@ type Result =
   | { kind: 'setting'; label: string; detail: string; icon: string; bundleId: string }
   | { kind: 'file'; label: string; detail: string; icon: string; path: string };
 
-const sampleFiles: LocalFile[] = [
-  { name: 'Lisbon itinerary.pdf', location: 'Downloads', fileType: 'PDF', modifiedLabel: 'Yesterday', path: '' },
-  { name: 'zega pitch — Sept.key', location: 'Documents › zega', fileType: 'KEY', modifiedLabel: '12 min ago', path: '' },
-];
-const sampleSettings: LocalPane[] = [
-  { label: 'Wi-Fi', icon: '⌁', bundleId: '' },
-  { label: 'Displays', icon: '▭', bundleId: '' },
-  { label: 'Sound', icon: '🔈', bundleId: '' },
-  { label: 'Dark mode', icon: '◐', bundleId: '' },
-];
-
 export default function FloatingSearch() {
-  const [files, setFiles] = useState<LocalFile[]>(sampleFiles);
-  const [settings, setSettings] = useState<LocalPane[]>(sampleSettings);
+  const [files, setFiles] = useState<LocalFile[] | null>(null);
+  const [settings, setSettings] = useState<LocalPane[] | null>(null);
+  const [loading, setLoading] = useState(true);
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [visible, setVisible] = useState(true);
@@ -31,7 +21,12 @@ export default function FloatingSearch() {
 
   useEffect(() => {
     input.current?.focus();
-    if (!isTauri()) return;
+    if (!isTauri()) {
+      setFiles([]);
+      setSettings([]);
+      setLoading(false);
+      return;
+    }
     void Promise.all([
       invoke<LocalFile[]>('local_recent_files'),
       invoke<LocalPane[]>('local_settings_panes'),
@@ -41,7 +36,7 @@ export default function FloatingSearch() {
     }).catch(() => {
       setFiles([]);
       setSettings([]);
-    });
+    }).finally(() => setLoading(false));
     let unlisten: (() => void) | undefined;
     void listen('launcher-opened', () => {
       setQuery('');
@@ -52,22 +47,30 @@ export default function FloatingSearch() {
     return () => unlisten?.();
   }, []);
 
+  const recentFiles = files ?? [];
+  const availableSettings = settings ?? [];
+
   const results = useMemo<Result[]>(() => {
     const needle = query.trim().toLocaleLowerCase();
     const matches = (text: string) => !needle || text.toLocaleLowerCase().includes(needle);
     return [
-      ...settings
+      ...availableSettings
         .filter(pane => matches(`${pane.label} System Settings`))
         .map(pane => ({ kind: 'setting' as const, label: pane.label, detail: 'System Settings', icon: pane.icon, bundleId: pane.bundleId })),
-      ...files
+      ...recentFiles
         .filter(file => matches(`${file.name} ${file.location}`))
         .map(file => ({ kind: 'file' as const, label: file.name, detail: file.location, icon: file.fileType.slice(0, 3).toUpperCase(), path: file.path })),
     ];
-  }, [files, query, settings]);
+  }, [availableSettings, query, recentFiles]);
 
   const close = async () => {
     setVisible(false);
     try { await invoke('hide_search_window'); } catch { /* Browser mock has no native window. */ }
+  };
+
+  const openZega = async () => {
+    try { await invoke('show_main_window'); } catch { /* Browser mock has no main window. */ }
+    await close();
   };
 
   const open = async (result: Result) => {
@@ -85,6 +88,7 @@ export default function FloatingSearch() {
     if (event.key === 'Escape') { event.preventDefault(); void close(); }
     if (event.key === 'ArrowDown' && results.length) { event.preventDefault(); setActive(index => (index + 1) % results.length); }
     if (event.key === 'ArrowUp' && results.length) { event.preventDefault(); setActive(index => (index - 1 + results.length) % results.length); }
+    if (event.metaKey && event.key === 'Enter') { event.preventDefault(); void openZega(); return; }
     if (event.key === 'Enter' && results[active]) { event.preventDefault(); void open(results[active]); }
   };
 
@@ -106,7 +110,7 @@ export default function FloatingSearch() {
   </section>;
 
   return <main className="float-root"><div className="launcher float-panel" role="dialog" aria-label="zega floating search">
-    <header className="lhead"><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span><span className="tb-sp"/><span className="kbd">⌥ Space</span></header>
+    <header className="lhead"><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span><span className="tb-sp"/><span className="kbd">⌘⌥ Space</span></header>
     <form className="search float-search" role="search" onSubmit={event => { event.preventDefault(); if (results[active]) void open(results[active]); }}>
       <input ref={input} aria-label="Search this Mac" autoComplete="off" spellCheck={false} placeholder="Ask computer anything…" value={query} onChange={event => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKeyDown}/>
       <button className="round go" type="submit" aria-label="Open selected result">↵</button>
@@ -114,7 +118,7 @@ export default function FloatingSearch() {
     <div className="lres" role="listbox" aria-label="Local results">
       {renderGroup('Settings', settingsResults)}
       {renderGroup('Files', fileResults)}
-      {!results.length && <p className="float-empty">No local matches.</p>}
+      {loading ? <div className="skeleton" aria-label="Loading local results" /> : !results.length && <p className="float-empty">No recent files or matching settings.</p>}
     </div>
     <footer className="lfoot"><span><kbd className="kbd">↑↓</kbd> Navigate</span><span><kbd className="kbd">↵</kbd> Open</span><span><kbd className="kbd">esc</kbd> Close</span><span className="local-note">Private. Secure. Local.</span></footer>
   </div></main>;

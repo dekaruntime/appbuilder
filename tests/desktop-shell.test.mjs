@@ -83,13 +83,33 @@ test('floating search is a local Tauri window with keyboard result actions', () 
   assert.match(native, /always_on_top\(true\)/);
   assert.match(native, /WebviewUrl::App\("launcher\/"\.into\(\)\)/);
   assert.match(readFileSync('next.config.ts', 'utf8'), /trailingSlash: true/);
-  assert.match(app, /with_shortcuts\(\["alt\+space"\]\)/);
+  assert.match(app, /with_shortcuts\(\["super\+alt\+Space"\]\)/);
+  assert.match(app, /Modifiers::ALT \| Modifiers::SUPER, Code::Space/);
+  assert.match(native, /\.transparent\(true\)/);
+  assert.equal(JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8')).app.macOSPrivateApi, true);
+  assert.match(readFileSync('src/app/globals.css', 'utf8'), /\.float-root[^\n]*background: transparent/);
 });
 
 test('the main window capability permits its draggable title bar', () => {
   const capability = JSON.parse(readFileSync('src-tauri/capabilities/default.json', 'utf8'));
   assert.ok(capability.windows.includes('main'));
   assert.ok(capability.permissions.includes('core:window:allow-start-dragging'));
+});
+
+test('the menu agent starts without the main window and exposes explicit zega access', () => {
+  const config = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+  const main = config.app.windows.find(window => window.label === 'main');
+  const menu = readFileSync('src-tauri/src/menu.rs', 'utf8');
+  const launcher = readFileSync('src/app/launcher/page.tsx', 'utf8');
+  const app = readFileSync('src-tauri/src/lib.rs', 'utf8');
+  assert.equal(main.visible, false);
+  assert.match(menu, /ActivationPolicy::Accessory/);
+  assert.match(menu, /ActivationPolicy::Regular/);
+  assert.match(menu, /"main"\s*=>\s*show_main_window/);
+  assert.match(app, /main_window_closed\(window\.app_handle\(\)\)/);
+  assert.match(launcher, /event\.metaKey && event\.key === 'Enter'/);
+  assert.match(launcher, /invoke\('open_local_file'/);
+  assert.match(launcher, /invoke\('open_settings_pane'/);
 });
 
 test('MapLibre uses the same-origin module worker and its adjacent shared chunk', () => {

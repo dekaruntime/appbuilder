@@ -1,9 +1,12 @@
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
+#[cfg(target_os = "macos")]
+use tauri::ActivationPolicy;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 
 pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
+    set_accessory_policy(app);
     let search = MenuItem::with_id(app, "search", "Search", true, None::<&str>)?;
     let main = MenuItem::with_id(app, "main", "Open zega", true, None::<&str>)?;
     let divider = PredefinedMenuItem::separator(app)?;
@@ -18,7 +21,7 @@ pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
         .show_menu_on_left_click(false)
         .on_menu_event(|app, event| match event.id().as_ref() {
             "search" => toggle_search_window(app),
-            "main" => show_main_window(app),
+            "main" => show_main_window(app.clone()),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
@@ -45,12 +48,25 @@ pub fn toggle_search_window(app: &AppHandle) {
         } else {
             window.show()?;
             window.set_focus()?;
+            activate_search_window(app);
             app.emit("launcher-opened", ())?;
         }
         Ok(())
     })();
     let _ = result;
 }
+
+#[cfg(target_os = "macos")]
+fn activate_search_window(app: &AppHandle) {
+    let _ = app.run_on_main_thread(|| {
+        if let Some(main_thread) = objc2::MainThreadMarker::new() {
+            objc2_app_kit::NSApplication::sharedApplication(main_thread).activate();
+        }
+    });
+}
+
+#[cfg(not(target_os = "macos"))]
+fn activate_search_window(_: &AppHandle) {}
 
 fn search_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     if let Some(window) = app.get_webview_window("launcher") {
@@ -64,24 +80,55 @@ fn search_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         WebviewUrl::App("launcher/".into()),
     )
     .title("zega Search")
-    .inner_size(720.0, 440.0)
+    .inner_size(680.0, 440.0)
     .min_inner_size(600.0, 340.0)
     .resizable(false)
     .decorations(false)
+    .transparent(true)
     .always_on_top(true)
     .skip_taskbar(true)
-    .shadow(true)
+    // The native shadow includes transparent webview pixels on macOS.
+    .shadow(false)
+    .effects(
+        tauri::window::EffectsBuilder::new()
+            .effect(tauri::utils::WindowEffect::Popover)
+            .state(tauri::utils::WindowEffectState::Active)
+            .radius(16.0)
+            .build(),
+    )
     .visible(false)
     .center()
     .build()
 }
 
-fn show_main_window(app: &AppHandle) {
+#[tauri::command]
+pub fn show_main_window(app: AppHandle) {
+    set_regular_policy(&app);
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
         let _ = window.set_focus();
     }
 }
+
+pub fn main_window_closed(app: &AppHandle) {
+    set_accessory_policy(app);
+}
+
+#[cfg(target_os = "macos")]
+fn set_accessory_policy(app: &AppHandle) {
+    let _ = app.set_activation_policy(ActivationPolicy::Accessory);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_accessory_policy(_: &AppHandle) {}
+
+#[cfg(target_os = "macos")]
+fn set_regular_policy(app: &AppHandle) {
+    let _ = app.set_activation_policy(ActivationPolicy::Regular);
+}
+
+#[cfg(not(target_os = "macos"))]
+fn set_regular_policy(_: &AppHandle) {}
 
 #[tauri::command]
 pub fn hide_search_window(app: AppHandle) -> Result<(), String> {
@@ -114,6 +161,8 @@ fn tray_image() -> Image<'static> {
         set_icon_pixel(&mut rgba, 21 + offset, 20 + offset, SIZE);
         set_icon_pixel(&mut rgba, 20 + offset, 21 + offset, SIZE);
     }
+    // Template glyph pixels are opaque; untouched pixels retain alpha 0 so
+    // the macOS menu-bar background shows through the icon.
     Image::new_owned(rgba, SIZE, SIZE)
 }
 
@@ -135,7 +184,9 @@ mod tests {
         let pixels = image.rgba();
         assert_eq!(image.width(), 32);
         assert_eq!(image.height(), 32);
-        assert!(pixels.chunks_exact(4).any(|pixel| pixel[3] == 0));
-        assert!(pixels.chunks_exact(4).any(|pixel| pixel[3] == 255));
+        assert_eq!(pixels[3], 0, "the image corner stays transparent");
+        let (pixels, _) = pixels.as_chunks::<4>();
+        assert!(pixels.iter().any(|pixel| pixel[3] == 0));
+        assert!(pixels.iter().any(|pixel| pixel[3] == 255));
     }
 }

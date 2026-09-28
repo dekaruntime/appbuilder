@@ -68,6 +68,63 @@ try {
   await localPage.getByAltText('fixture-photo.jpg').waitFor();
   assert.match(await localPage.locator('.photo-tile img').getAttribute('src'), /^data:image\/svg\+xml/);
   await localPage.close();
+
+  const launcher = await browser.newPage({ viewport: { width: 680, height: 440 } });
+  const launcherErrors = [];
+  launcher.on('console', message => { if (message.type() === 'error') launcherErrors.push(message.text()); });
+  launcher.on('pageerror', error => launcherErrors.push(error.message));
+  await launcher.addInitScript(() => {
+    window.isTauri = true;
+    window.mockCommands = [];
+    window.mainVisible = false;
+    const callbacks = [];
+    window.__TAURI_INTERNALS__ = {
+      transformCallback: callback => { callbacks.push(callback); return callbacks.length; },
+      convertFileSrc: path => `asset://localhost${path}`,
+      invoke: async (command, args) => {
+        window.mockCommands.push([command, args]);
+        if (command === 'show_main_window') window.mainVisible = true;
+        if (command === 'plugin:event|listen') return 1;
+        if (command === 'local_recent_files') return [{
+          name: 'Local fixture.txt', location: 'Documents', fileType: 'TXT',
+          modifiedLabel: 'Just now', path: '/Users/example/Documents/Local fixture.txt',
+        }];
+        if (command === 'local_settings_panes') return [];
+        return null;
+      },
+    };
+  });
+  await launcher.goto('http://localhost:1421/launcher/', { waitUntil: 'networkidle' });
+  const input = launcher.getByRole('textbox', { name: 'Search this Mac' });
+  await launcher.getByText('Local fixture.txt').waitFor();
+  const rootBackground = await launcher.locator('.float-root').evaluate(element => getComputedStyle(element).backgroundColor);
+  assert.match(rootBackground, /0, 0, 0, 0|transparent/);
+  const panelBackground = await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor);
+  assert.match(panelBackground, /0, 0, 0, 0|transparent/, 'the native material must remain visible');
+  assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).boxShadow), 'none', 'no clipped CSS shadow around the native panel');
+  for (const height of [340, 440]) {
+    await launcher.setViewportSize({ width: 680, height });
+    const footer = await launcher.locator('.lfoot').boundingBox();
+    assert.ok(footer.y >= 0 && footer.y + footer.height <= height, 'keyboard hints stay inside the window');
+    assert.equal(await launcher.evaluate(() => document.documentElement.scrollHeight), height);
+  }
+  await launcher.screenshot({ path: '.tmp/desktop-agent-launcher.png' });
+  await input.press('Enter');
+  await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'open_local_file'));
+  let commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
+  assert.ok(commands.includes('open_local_file'));
+  assert.ok(commands.includes('hide_search_window'));
+  assert.ok(!commands.includes('show_main_window'), 'opening a local result never shows zega');
+  assert.equal(await launcher.evaluate(() => window.mainVisible), false);
+
+  await launcher.reload({ waitUntil: 'networkidle' });
+  await launcher.getByRole('textbox', { name: 'Search this Mac' }).press('Meta+Enter');
+  await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'show_main_window'));
+  commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
+  assert.ok(commands.includes('show_main_window'), 'Command+Return is the explicit main-window action');
+  assert.equal(await launcher.evaluate(() => window.mainVisible), true);
+  assert.deepEqual(launcherErrors, [], `launcher console errors: ${launcherErrors.join(' | ')}`);
+  await launcher.close();
   assert.deepEqual(errors, [], `browser console errors during local-data fixture: ${errors.join(' | ')}`);
 } finally {
   await browser?.close();
