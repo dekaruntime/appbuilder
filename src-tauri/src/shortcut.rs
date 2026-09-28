@@ -1,5 +1,5 @@
-//! Carbon's exclusive registration suppresses Finder's shared ⌘⌥Space binding
-//! only while zega owns the key. No system preference edits or event tap needed.
+//! Exclusive registration arbitrates with other apps, not macOS symbolic hotkeys.
+//! Detect reserved system shortcuts separately so setup never claims otherwise.
 use std::{
     cell::{Cell, RefCell},
     ffi::c_void,
@@ -29,6 +29,7 @@ type Callback = unsafe extern "C" fn(Handle, Handle, Handle) -> i32;
 
 #[link(name = "Carbon", kind = "framework")]
 extern "C" {
+    fn CopySymbolicHotKeys(keys: *mut Handle) -> i32;
     fn GetApplicationEventTarget() -> Handle;
     fn GetEventKind(event: Handle) -> u32;
     fn GetEventParameter(
@@ -87,6 +88,7 @@ thread_local! {
 pub fn install(app: &AppHandle) -> Result<(), String> {
     let _main =
         objc2::MainThreadMarker::new().ok_or("Shortcut setup must run on the main thread")?;
+    let system_conflict = system_shortcut_conflict()?;
     let mut context = Box::new(Context {
         app: app.clone(),
         pressed: Cell::new(false),
@@ -142,7 +144,39 @@ pub fn install(app: &AppHandle) -> Result<(), String> {
             _context: context,
         })
     });
+    if system_conflict {
+        return Err("macOS also uses ⌘⌥Space. Open System Settings → Keyboard → Keyboard Shortcuts and remove that binding (normally Spotlight → Show Finder search window). The tray still opens zega search.".into());
+    }
     Ok(())
+}
+
+fn system_shortcut_conflict() -> Result<bool, String> {
+    use objc2::rc::Retained;
+    use objc2_foundation::{NSArray, NSDictionary, NSNumber, NSString};
+    let mut keys = ptr::null_mut();
+    // CopySymbolicHotKeys returns an owned CFArray of CFDictionary values.
+    // These Foundation collections and NSNumber are toll-free bridged; adopt
+    // the +1 reference so the array and its contents are released on return.
+    let status = unsafe { CopySymbolicHotKeys(&mut keys) };
+    if status != 0 {
+        return Err(format!("Cannot check macOS keyboard shortcuts ({status})"));
+    }
+    let keys =
+        unsafe { Retained::<NSArray<NSDictionary<NSString, NSNumber>>>::from_raw(keys.cast()) }
+            .ok_or("macOS returned no keyboard shortcut information")?;
+    let code = NSString::from_str("kHISymbolicHotKeyCode");
+    let modifiers = NSString::from_str("kHISymbolicHotKeyModifiers");
+    let enabled = NSString::from_str("kHISymbolicHotKeyEnabled");
+    Ok(keys.iter().any(|key| {
+        key.objectForKey(&enabled)
+            .is_some_and(|value| value.boolValue())
+            && key
+                .objectForKey(&code)
+                .is_some_and(|value| value.unsignedIntValue() == 49)
+            && key
+                .objectForKey(&modifiers)
+                .is_some_and(|value| value.unsignedIntValue() == (1 << 8) | (1 << 11))
+    }))
 }
 
 pub fn uninstall() {

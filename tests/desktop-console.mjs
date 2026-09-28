@@ -79,6 +79,7 @@ try {
     window.mainVisible = false;
     const callbacks = [];
     window.__TAURI_INTERNALS__ = {
+      metadata: { currentWindow: { label: "launcher" } },
       transformCallback: callback => { callbacks.push(callback); return callbacks.length; },
       convertFileSrc: path => `asset://localhost${path}`,
       invoke: async (command, args) => {
@@ -108,6 +109,15 @@ try {
     assert.ok(footer.y >= 0 && footer.y + footer.height <= height, 'keyboard hints stay inside the window');
     assert.equal(await launcher.evaluate(() => document.documentElement.scrollHeight), height);
   }
+  for (const selector of ['.lhead', '.float-word .v', '.lhead .kbd', '.lhead .gi']) {
+    const before = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
+    await launcher.locator(selector).dispatchEvent('mousedown', { button: 0 });
+    assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), before + 1, `${selector} starts a native drag`);
+  }
+  const drags = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
+  await input.dispatchEvent('mousedown', { button: 0 });
+  await launcher.locator('.lhead').dispatchEvent('mousedown', { button: 2 });
+  assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), drags, 'search editing and right-click do not drag the window');
   await launcher.screenshot({ path: '.tmp/desktop-agent-launcher.png' });
   await input.press('Enter');
   await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'open_local_file'));

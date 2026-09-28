@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 type LocalFile = { name: string; location: string; fileType: string; modifiedLabel: string; path: string };
 type LocalPane = { label: string; icon: string; bundleId: string };
@@ -110,7 +111,12 @@ export default function FloatingSearch() {
   </section>;
 
   return <main className="float-root"><div className="launcher float-panel" role="dialog" aria-label="zega floating search">
-    <header className="lhead"><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span><span className="tb-sp"/><span className="kbd">⌘⌥ Space</span></header>
+    <header className="lhead" onMouseDown={event => {
+      if (event.button === 0 && isTauri()) {
+        event.preventDefault();
+        void getCurrentWindow().startDragging().catch(error => console.error('Could not move search window', error));
+      }
+    }}><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span><span className="tb-sp"/><span className="kbd">⌘⌥ Space</span></header>
     <form className="search float-search" role="search" onSubmit={event => { event.preventDefault(); if (results[active]) void open(results[active]); }}>
       <input ref={input} aria-label="Search this Mac" autoComplete="off" spellCheck={false} placeholder="Ask computer anything…" value={query} onChange={event => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKeyDown}/>
       <button className="round go" type="submit" aria-label="Open selected result">↵</button>

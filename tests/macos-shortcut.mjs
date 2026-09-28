@@ -23,7 +23,7 @@ try {
     if (result.status === 1 && result.stdout.includes('status=-9878')) { claimed = true; break; }
     await delay(250);
   }
-  assert.ok(claimed, 'zega must hold an exclusive shortcut, suppressing shared Finder registration');
+  assert.ok(claimed, 'zega must hold an exclusive shortcut against other applications');
   console.log('PASS: zega owns Command+Option+Space exclusively');
 } finally {
   // Only stop the app process created by this test.
