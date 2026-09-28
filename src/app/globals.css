@@ -59,7 +59,7 @@ html, body { background: var(--bg); }
   .search .ph { flex: 1; min-width: 0; font-size: 15px; color: var(--soft); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .search .ph.typed { color: var(--ink); }
   .round { width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center; border: 1px solid var(--edge); background: var(--panel); flex: none; }
-  .round.go { background: var(--accent); border-color: var(--accent); color: #fff; }
+  .round.go { background: var(--accent); border-color: var(--accent); color: var(--accent-ink, #fff); }
   .kbd { font: 500 11px var(--mono); color: var(--soft); border: 1px solid var(--edge); border-radius: 5px; padding: 1px 6px; background: var(--tint); }
 
   /* 1. landing */
@@ -245,7 +245,7 @@ html:has(.float-root), body:has(.float-root) { overflow: hidden; background: tra
 .shortcut-page button:disabled { opacity: .5; cursor: default; }
 .shortcut-page button[aria-pressed="true"] { background: var(--var-bg); color: var(--var-ink); }
 .shortcut-page .shortcut-link { padding: 4px 0; border: 0; background: transparent; color: var(--link); }
-.shortcut-page .shortcut-primary { background: var(--accent); color: var(--win); }
+.shortcut-page .shortcut-primary { background: var(--accent); color: var(--accent-ink, var(--win)); }
 .shortcut-page [role="alert"] { color: var(--ink); border-left: 3px solid var(--accent); padding-left: 12px; }
 
 .shortcut-manual { margin: 0; padding: 8px 0 0; border: 0; color: var(--soft); font-size: 12px; }
