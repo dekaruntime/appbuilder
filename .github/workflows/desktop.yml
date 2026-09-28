@@ -66,8 +66,9 @@ jobs:
       - run: npm run test:desktop:theme
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
+          # Keep this channel and component set aligned with rust-toolchain.toml.
           toolchain: '1.96.0'
-          components: clippy
+          components: clippy, rustfmt
       - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - run: sccache --version
       - run: cargo check --locked --workspace --all-targets --manifest-path src-tauri/Cargo.toml

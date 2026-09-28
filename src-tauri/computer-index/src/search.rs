@@ -68,7 +68,7 @@ impl Index {
         let terms: Vec<_> = words
             .into_iter()
             .filter(|w| {
-                !matches!(
+                !(matches!(
                     *w,
                     "photo"
                         | "photos"
@@ -78,7 +78,7 @@ impl Index {
                         | "videos"
                         | "movie"
                         | "movies"
-                ) && !(summer && matches!(*w, "last" | "summer"))
+                ) || summer && matches!(*w, "last" | "summer"))
             })
             .collect();
         let places = rows(self.zql("query { Place { key name } }")?);
