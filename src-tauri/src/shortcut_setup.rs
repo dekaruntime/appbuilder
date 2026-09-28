@@ -248,44 +248,70 @@ pub async fn shortcut_apply(app: AppHandle, binding: Binding) -> Result<Status, 
             .portal;
         if is_portal {
             #[cfg(target_os = "linux")]
-            crate::desktop_identity::prepare(&app)?;
-            let state = app.state::<PortalState>();
-            let mut current = state.0.lock().await;
-            if let Some(previous) = current.take() {
-                previous.close().await;
-            }
-            let handle = app.clone();
-            let result = crate::shortcut_portal::register(
-                &app.config().identifier,
-                &binding,
-                move |event| {
-                    let app = handle.clone();
-                    let _ = handle.run_on_main_thread(move || match event {
-                        crate::shortcut_portal::Event::Activated => activated(&app),
-                        crate::shortcut_portal::Event::Changed(label) => {
-                            portal_changed(&app, Some(label))
-                        }
-                        crate::shortcut_portal::Event::Closed => portal_changed(&app, None),
-                    });
-                },
-            )
-            .await;
-            #[allow(clippy::bind_instead_of_map)]
-            // Linux configuration can fail inside this closure.
-            let configured = result.and_then(|registration| {
+            let gnome = crate::gnome_shortcut::available().await;
+            #[cfg(not(target_os = "linux"))]
+            let gnome = Ok::<bool, String>(false);
+            if !matches!(gnome, Ok(false)) {
                 #[cfg(target_os = "linux")]
-                let label = crate::hyprland::configure(
-                    &app.path().config_dir().map_err(|e| e.to_string())?,
-                    &binding,
-                    &app.config().identifier,
-                )?
-                .unwrap_or_else(|| registration.label.clone());
+                let result = match gnome {
+                    Ok(true) => {
+                        let binding = binding.clone();
+                        tauri::async_runtime::spawn_blocking(move || {
+                            crate::gnome_shortcut::install(
+                                &binding,
+                                &std::env::current_exe().map_err(|e| e.to_string())?,
+                            )
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?
+                    }
+                    Err(error) => Err(error),
+                    Ok(false) => unreachable!(),
+                };
                 #[cfg(not(target_os = "linux"))]
-                let label = registration.label.clone();
-                *current = Some(registration);
-                Ok(label)
-            });
-            Some(configured)
+                let result = Err("GNOME shortcuts are unavailable on this host.".into());
+                Some(result)
+            } else {
+                #[cfg(target_os = "linux")]
+                crate::desktop_identity::prepare(&app)?;
+                let state = app.state::<PortalState>();
+                let mut current = state.0.lock().await;
+                if let Some(previous) = current.take() {
+                    previous.close().await;
+                }
+                let handle = app.clone();
+                let result = crate::shortcut_portal::register(
+                    &app.config().identifier,
+                    &binding,
+                    move |event| {
+                        let app = handle.clone();
+                        let _ = handle.run_on_main_thread(move || match event {
+                            crate::shortcut_portal::Event::Activated => activated(&app),
+                            crate::shortcut_portal::Event::Changed(label) => {
+                                portal_changed(&app, Some(label))
+                            }
+                            crate::shortcut_portal::Event::Closed => portal_changed(&app, None),
+                        });
+                    },
+                )
+                .await;
+                #[allow(clippy::bind_instead_of_map)]
+                // Linux configuration can fail inside this closure.
+                let configured = result.and_then(|registration| {
+                    #[cfg(target_os = "linux")]
+                    let label = crate::hyprland::configure(
+                        &app.path().config_dir().map_err(|e| e.to_string())?,
+                        &binding,
+                        &app.config().identifier,
+                    )?
+                    .unwrap_or_else(|| registration.label.clone());
+                    #[cfg(not(target_os = "linux"))]
+                    let label = registration.label.clone();
+                    *current = Some(registration);
+                    Ok(label)
+                });
+                Some(configured)
+            }
         } else {
             None
         }

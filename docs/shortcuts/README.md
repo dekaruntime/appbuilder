@@ -52,6 +52,21 @@ successful Windows build on another machine is not a substitute for this check.
 
 ## Linux / Omarchy
 
+On Ubuntu / GNOME releases without the GlobalShortcuts portal (including the
+tested GNOME 46 desktop), **Save** creates a `zega Search` custom shortcut in
+GNOME Keyboard Settings. It checks system, extension keybinding schemas, and
+existing custom shortcuts first. It preserves other entries and refuses an
+entry belonging to a different zega installation. Changing the keys in zega
+updates that same entry. The command opens search directly, including when the
+agent is stopped; it does not open the main window.
+
+GNOME's desktop command reaches the same native delivery and user-confirmation
+checks as other platforms. A saved setting is not proof of delivery or focus:
+run the outside-app test. If another application intercepts the keys, choose a
+different combination. To remove the persistent desktop shortcut after
+uninstalling zega, remove `zega Search` in Settings → Keyboard → View and
+Customize Shortcuts → Custom Shortcuts.
+
 Native Wayland uses the **XDG GlobalShortcuts portal**. Save requests desktop
 approval; cancellation, unavailable portals, and permission expiry are reported.
 The portal's returned trigger label takes precedence over the requested default.
