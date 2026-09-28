@@ -167,7 +167,12 @@ try {
   await launcher.getByText('Local fixture.txt').first().waitFor();
   assert.notEqual(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'Other Linux desktops retain rounded corners');
   const linuxBackground = await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor);
-  assert.match(linuxBackground, /\/\s*0\.92\)/, 'Linux needs a readable translucent surface without macOS material');
+  assert.match(linuxBackground, /\/\s*0\.97\)/, 'Linux needs a readable translucent surface without macOS material');
+  await launcher.emulateMedia({ colorScheme: 'dark' });
+  assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).getPropertyValue('--panel').trim().toLowerCase()), '#161e26', 'system dark mode uses the dark search surface');
+  assert.notEqual(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor), linuxBackground, 'the search surface changes when system appearance changes');
+  await launcher.emulateMedia({ colorScheme: 'light' });
+  assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor), linuxBackground, 'system light mode restores the light search surface');
   assert.match(await launcher.locator('.float-root').evaluate(element => getComputedStyle(element).backgroundColor), /0, 0, 0, 0|transparent/, 'Linux keeps the rounded corners transparent');
   await launcher.goto('http://localhost:1421/launcher/?platform=linux&omarchy=1', { waitUntil: 'networkidle' });
   assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'Omarchy uses square panel corners');

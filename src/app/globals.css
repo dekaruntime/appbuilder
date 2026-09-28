@@ -208,7 +208,7 @@ body { padding: 0; }
 html:has(.float-root), body:has(.float-root) { overflow: hidden; background: transparent; }
 .float-root { position: fixed; inset: 0; display: grid; padding: 0; background: transparent; }
 /* Compositors supply desktop blur; keep a readable tint where native material is absent. */
-.float-panel { box-sizing: border-box; width: 100%; height: 100%; min-height: 0; margin: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--panel) 92%, transparent); backdrop-filter: none; box-shadow: none; overflow: hidden; }
+.float-panel { box-sizing: border-box; width: 100%; height: 100%; min-height: 0; margin: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--panel) 97%, transparent); backdrop-filter: none; box-shadow: none; overflow: hidden; }
 .float-root[data-native-material="true"] .float-panel { background: transparent; }
 .float-root[data-square-corners="true"] .float-panel, .float-root[data-square-corners="true"] .float-search { border-radius: 0; }
 .float-panel .lres { flex: 1; min-height: 0; max-height: none; align-content: start; }
