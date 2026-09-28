@@ -69,10 +69,22 @@ pub fn preferred_trigger(binding: &Binding) -> String {
 }
 
 pub async fn register(
+    app_id: &str,
     binding: &Binding,
     callback: impl Fn(Event) + Send + 'static,
 ) -> Result<Registration, String> {
-    let portal = GlobalShortcuts::new().await.map_err(|e| format!("Your desktop's global-shortcut portal is unavailable: {e}. Click-to-open search still works."))?;
+    // A fresh peer allows replacement/retry after a portal restart. The registry
+    // accepts identity only before the first portal request on that connection.
+    let connection = ashpd::zbus::Connection::session()
+        .await
+        .map_err(|e| e.to_string())?;
+    ashpd::register_host_app_with_connection(
+        connection.clone(),
+        app_id.parse().map_err(|e: ashpd::Error| e.to_string())?,
+    )
+    .await
+    .map_err(|e| format!("Could not identify zega to the desktop: {e}"))?;
+    let portal = GlobalShortcuts::with_connection(connection).await.map_err(|e| format!("Your desktop's global-shortcut portal is unavailable: {e}. Click-to-open search still works."))?;
     let session = Arc::new(
         portal
             .create_session(Default::default())
@@ -173,5 +185,47 @@ mod tests {
             ..Binding::default()
         };
         assert_eq!(preferred_trigger(&binding), "CTRL+ALT+k");
+    }
+
+    #[cfg(target_os = "linux")]
+    #[tokio::test]
+    #[ignore = "requires a live desktop portal; installs and removes a test desktop identity"]
+    async fn real_portal_accepts_identity_and_repeated_registration() {
+        use std::io::Write;
+        let config: serde_json::Value =
+            serde_json::from_str(include_str!("../tauri.conf.json")).unwrap();
+        let id = format!(
+            "{}.PortalTest{}",
+            config["identifier"].as_str().unwrap(),
+            std::process::id()
+        );
+        let directory = gdk::glib::user_data_dir().join("applications");
+        std::fs::create_dir_all(&directory).unwrap();
+        struct Entry(std::path::PathBuf);
+        impl Drop for Entry {
+            fn drop(&mut self) {
+                let _ = std::fs::remove_file(&self.0);
+            }
+        }
+        let path = directory.join(format!("{id}.desktop"));
+        let mut file = std::fs::OpenOptions::new()
+            .write(true)
+            .create_new(true)
+            .open(&path)
+            .unwrap();
+        let _entry = Entry(path);
+        file.write_all(
+            crate::desktop_identity::desktop_entry(&std::env::current_exe().unwrap())
+                .unwrap()
+                .as_bytes(),
+        )
+        .unwrap();
+        drop(file);
+        for _ in 0..2 {
+            let registration = register(&id, &Binding::default(), |_| {})
+                .await
+                .expect("the desktop must accept zega's identified search action");
+            registration.close().await;
+        }
     }
 }

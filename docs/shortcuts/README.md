@@ -51,6 +51,13 @@ approval; cancellation, unavailable portals, and permission expiry are reported.
 The portal's returned trigger label takes precedence over the requested default.
 X11 uses direct registration. Neither path is declared working without the test.
 
+The host portal also needs zega's application identity. If its desktop entry is
+not installed, Save creates a hidden `dev.zega.desktop.desktop` entry in the
+user's applications directory; existing entries are preserved. Each shortcut
+registration uses a fresh D-Bus connection and identifies the app before making
+portal requests. This supports standalone builds and `tauri dev`, as well as
+retrying after a portal restart.
+
 Hyprland's portal can expose an action without assigning a key. While zega runs:
 
 1. Use `hyprctl globalshortcuts` to find its `search` action and exact application
@@ -63,9 +70,19 @@ Hyprland's portal can expose an action without assigning a key. While zega runs:
    app. Confirm no second action runs. Repeat after a desktop login.
 
 The portal adapter and its application wiring compile in the Mac test target as
-an API check. That does
-**not** establish Linux runtime support. A real Omarchy desktop test is required
-before calling that platform verified.
+an API check. Native Linux build/check/clippy have also passed on Omarchy 4.0.3
+with Hyprland 0.56.2. Physical dispatch and focus still require the test above.
+
+For a live registration regression check, in the desktop session run:
+
+```sh
+cargo test --locked --manifest-path src-tauri/Cargo.toml \
+  real_portal_accepts_identity_and_repeated_registration -- --ignored
+```
+
+This test creates and removes its own desktop identity, then opens and closes
+two real portal registrations without competing for the running app's action.
+It does not bind keys or establish physical keypress delivery.
 
 ## Hardware acceptance checklist
 

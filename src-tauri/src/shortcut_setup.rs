@@ -227,22 +227,28 @@ pub async fn shortcut_apply(app: AppHandle, binding: Binding) -> Result<Status, 
             .status
             .portal;
         if is_portal {
+            #[cfg(target_os = "linux")]
+            crate::desktop_identity::prepare(&app)?;
             let state = app.state::<PortalState>();
             let mut current = state.0.lock().await;
             if let Some(previous) = current.take() {
                 previous.close().await;
             }
             let handle = app.clone();
-            let result = crate::shortcut_portal::register(&binding, move |event| {
-                let app = handle.clone();
-                let _ = handle.run_on_main_thread(move || match event {
-                    crate::shortcut_portal::Event::Activated => activated(&app),
-                    crate::shortcut_portal::Event::Changed(label) => {
-                        portal_changed(&app, Some(label))
-                    }
-                    crate::shortcut_portal::Event::Closed => portal_changed(&app, None),
-                });
-            })
+            let result = crate::shortcut_portal::register(
+                &app.config().identifier,
+                &binding,
+                move |event| {
+                    let app = handle.clone();
+                    let _ = handle.run_on_main_thread(move || match event {
+                        crate::shortcut_portal::Event::Activated => activated(&app),
+                        crate::shortcut_portal::Event::Changed(label) => {
+                            portal_changed(&app, Some(label))
+                        }
+                        crate::shortcut_portal::Event::Closed => portal_changed(&app, None),
+                    });
+                },
+            )
             .await;
             Some(result.map(|registration| {
                 let label = registration.label.clone();

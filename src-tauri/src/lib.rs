@@ -1,4 +1,6 @@
 mod account;
+#[cfg(target_os = "linux")]
+mod desktop_identity;
 mod local;
 mod loopback;
 mod menu;
