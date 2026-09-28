@@ -184,7 +184,7 @@ fn install(app: &AppHandle, binding: &Binding) -> Result<(), String> {
 fn install(app: &AppHandle, binding: &Binding) -> Result<(), String> {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
     if uses_portal() {
-        return Err("Choose Save & check availability to request a shortcut from your desktop. Approve the desktop prompt, then run the keypress test.".into());
+        return Err("Choose Save & test to request your desktop shortcut.".into());
     }
     if app
         .try_state::<tauri_plugin_global_shortcut::GlobalShortcut<tauri::Wry>>()
@@ -431,14 +431,23 @@ pub fn activated(app: &AppHandle) {
 }
 
 #[tauri::command]
+pub fn close_shortcut_setup(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("shortcut-setup") {
+        window.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn show_shortcut_setup(app: AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window("shortcut-setup") {
         Some(window) => window,
         None => {
             WebviewWindowBuilder::new(&app, "shortcut-setup", WebviewUrl::App("shortcut/".into()))
                 .title("zega · Search shortcut")
-                .inner_size(620.0, 720.0)
-                .min_inner_size(480.0, 560.0)
+                .inner_size(520.0, 440.0)
+                .min_inner_size(480.0, 400.0)
+                .resizable(true)
                 .visible(false)
                 .build()
                 .map_err(|e| e.to_string())?

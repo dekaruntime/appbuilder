@@ -59,6 +59,7 @@ pub fn run() {
             shortcut_setup::shortcut_apply,
             shortcut_setup::shortcut_begin_test,
             shortcut_setup::shortcut_confirm,
+            shortcut_setup::close_shortcut_setup,
             shortcut_setup::show_shortcut_setup,
         ])
         .setup(|app| {

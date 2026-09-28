@@ -13,7 +13,7 @@ export default function ShortcutSetup() {
   const [recording, setRecording] = useState(false);
   const [timeout, setTimeoutReached] = useState(false);
   const [native, setNative] = useState(false);
-  const [help, setHelp] = useState('macos');
+  const [view, setView] = useState<'shortcut' | 'change' | 'help'>('shortcut');
   const [keyboardPane, setKeyboardPane] = useState<string | null>(null);
   const mac = status?.platform === 'macos';
   const recommended = platformDefault(status?.platform ?? 'macos');
@@ -25,7 +25,7 @@ export default function ShortcutSetup() {
     let disposed = false;
     const update = (value: ShortcutStatus) => { if (!disposed) setStatus(value); };
     const stop = listen<ShortcutStatus>('shortcut-status', event => update(event.payload));
-    void invoke<ShortcutStatus>('shortcut_status').then(value => { if (!disposed) { update(value); setBinding(value.binding); setHelp(value.platform); } }).catch(reason => setError(String(reason)));
+    void invoke<ShortcutStatus>('shortcut_status').then(value => { if (!disposed) { update(value); setBinding(value.binding); } }).catch(reason => setError(String(reason)));
     return () => { disposed = true; void stop.then(unlisten => unlisten()); };
   }, []);
   useEffect(() => {
@@ -51,33 +51,54 @@ export default function ShortcutSetup() {
     setRecording(false); setError('');
   };
   const applied = status && JSON.stringify(binding) === JSON.stringify(status.binding);
+  const test = () => {
+    setBusy(true); setError('');
+    void (async () => {
+      const value = applied && status?.registered ? status : await invoke<ShortcutStatus>('shortcut_apply', {binding});
+      setStatus(value);
+      if (!value.registered || value.error) { setView('shortcut'); return; }
+      setStatus(await invoke<ShortcutStatus>('shortcut_begin_test'));
+      setView('shortcut');
+    })().catch(reason => setError(String(reason))).finally(() => setBusy(false));
+  };
+  const waiting = applied && status?.phase === 'waiting' && !timeout;
+  const received = applied && status?.phase === 'received';
+  const confirmed = applied && status?.phase === 'confirmed';
+  const problem = error || (applied && status?.error);
   return <main className="shortcut-page">
-    <header><span className="tb-word">zega <span className="v">computer</span></span><h1>Search from anywhere</h1><p>Set a shortcut, then try it while another app is in front. You can also open search with the button below or from zega’s tray menu.</p></header>
-    <section aria-labelledby="choose-title"><h2 id="choose-title">1. Choose your shortcut</h2>
-      <div className="shortcut-actions"><button type="button" aria-pressed={recording} onClick={() => setRecording(true)} onKeyDown={record} onBlur={() => setRecording(false)}>{recording ? 'Press a combination… (Esc cancels)' : bindingLabel(binding, mac)}</button><button type="button" disabled={!native || busy} onClick={() => { setBinding(recommended); setRecording(false); void action('shortcut_apply', { binding: recommended }); }}>Use default</button></div>
-      <details className="shortcut-manual"><summary>Choose keys without pressing the shortcut</summary>
-        <div className="shortcut-actions">{(['control', 'alt', 'shift', 'superKey'] as const).map(modifier => <label key={modifier}><input type="checkbox" checked={binding[modifier]} onChange={event => setBinding(current => ({...current, [modifier]: event.target.checked}))} />{{control: 'Control', alt: mac ? 'Option' : 'Alt', shift: 'Shift', superKey: mac ? 'Command' : 'Super'}[modifier]}</label>)}</div>
-        <label>Key <select value={binding.key} onChange={event => setBinding(current => ({...current, key: event.target.value}))}>{['Space', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(key => `Key${key}`), ...Array.from({length: 12}, (_, index) => `F${index + 1}`)].map(key => <option key={key} value={key}>{key.replace(/^Key/, '')}</option>)}</select></label>
-      </details>
-      <p className="shortcut-note">Default: {bindingLabel(recommended, mac)}. Use default saves it immediately. Click the combination to record a different one. Use Space, a letter, or F1–F12 with modifiers.</p>
-      <button type="button" className="shortcut-primary" disabled={!native || busy || recording} onClick={() => void action('shortcut_apply', { binding })}>{busy ? 'Checking…' : 'Save & check availability'}</button>
-      {status?.registered && <p>{status.portal ? 'Desktop accepted the search action' : 'Registered'}: <kbd>{status.label}</kbd>. A keypress test is still needed after changes or restart.</p>}
-      {(error || status?.error) && <p role="alert">{error || status?.error}</p>}
-    </section>
-    <section aria-labelledby="test-title"><h2 id="test-title">2. Test outside zega</h2>
-      <p>Start the test, click another app, and press {status?.label || bindingLabel(binding, mac)} within 30 seconds. Search should appear without opening the main zega window.</p>
-      <div className="shortcut-actions"><button type="button" disabled={!native || !status?.registered || !applied || busy} onClick={() => void action('shortcut_begin_test')}>Start keypress test</button><button type="button" disabled={!native} onClick={() => { void invoke('open_search_window').catch(reason => setError(String(reason))); }}>Open search by click</button></div>
-      <div role="status" aria-live="polite">
-        {status?.phase === 'waiting' && !timeout && <p>Waiting for the global shortcut… Switch to another app now.</p>}
-        {(timeout || status?.phase === 'expired') && <p>No shortcut received in time. Check the guidance below, choose another combination, or retry. Click-to-open still works.</p>}
-        {status?.phase === 'received' && <><p>Keypress received. Without clicking, type a few letters in search. If typing goes to the previous app, or another launcher also opened, retry with another shortcut or adjust the conflicting binding.</p><button type="button" onClick={() => void action('shortcut_confirm')}>Only zega opened, and typing worked</button></>}
-        {status?.phase === 'confirmed' && <p>Shortcut tested successfully for this session. Retest if another launcher or system setting changes.</p>}
+    <header><span className="tb-word">zega <span className="v">computer</span></span><h1>{view === 'help' ? 'Shortcut help' : 'Search shortcut'}</h1></header>
+    {view === 'help' ? <section className="shortcut-help" aria-label="Shortcut help">
+      {status?.platform === 'macos' && <><p>If macOS or another launcher uses these keys, choose a different combination or change its shortcut in Keyboard Settings.</p>{keyboardPane && <button type="button" onClick={() => { void invoke('open_settings_pane', { bundleId: keyboardPane }).catch(reason => setError(String(reason))); }}>Open Keyboard Settings</button>}</>}
+      {status?.platform === 'windows' && <p>Alt+Space can open a window menu or PowerToys Run. If it conflicts, try Control+Alt+Space or change the other app’s shortcut.</p>}
+      {status?.platform === 'linux' && <p>Your desktop manages shortcuts. Approve any permission prompt. If these keys are busy, choose another combination or change it in your desktop’s Keyboard Settings. zega preserves existing shortcuts.</p>}
+      <p>Test from another app. Only zega search should appear, and typing should work without a click.</p>
+      <button type="button" className="shortcut-primary" onClick={() => setView('shortcut')}>Back</button>
+    </section> : <>
+      {view === 'shortcut' && <p className="shortcut-intro">Open search from any app.</p>}
+      <div className="shortcut-key-row">
+        <button type="button" className="shortcut-key" aria-pressed={recording} disabled={!status || busy} onClick={() => setRecording(true)} onKeyDown={record} onBlur={() => setRecording(false)}>{!status ? 'Loading…' : recording ? 'Press a combination… (Esc cancels)' : bindingLabel(binding, mac)}</button>
+        <button type="button" className="shortcut-link" disabled={!status || busy} onClick={() => { if (view === 'change' && status) setBinding(status.binding); setView(view === 'change' ? 'shortcut' : 'change'); setRecording(false); setError(''); }}>{view === 'change' ? 'Cancel' : 'Change'}</button>
       </div>
-    </section>
-    <section aria-labelledby="help-title"><h2 id="help-title">Platform help</h2><nav className="shortcut-actions" aria-label="Platform help">{['macos', 'windows', 'linux'].map(platform => <button type="button" key={platform} aria-pressed={help === platform} onClick={() => setHelp(platform)}>{platform === 'macos' ? 'macOS' : platform === 'windows' ? 'Windows' : 'Linux / Omarchy'}</button>)}</nav>
-      {help === 'macos' && <><p>macOS system shortcuts are checked before registration. Other launchers can share a shortcut without reporting a conflict, so the keypress test matters. Change a reserved binding in System Settings → Keyboard → Keyboard Shortcuts, or choose another combination here. zega does not change system shortcuts.</p>{keyboardPane && <button type="button" onClick={() => { void invoke('open_settings_pane', { bundleId: keyboardPane }).catch(reason => setError(String(reason))); }}>Open Keyboard Settings</button>}</>}
-      {help === 'windows' && <p>Alt+Space can overlap with the window menu or PowerToys Run. zega reports registration errors, but another app may still intercept keys. Try Control+Alt+Space if needed. Retest while another app is focused, including any app running as administrator.</p>}
-      {help === 'linux' && <p>Linux desktops control global shortcuts differently. On Wayland, Save requests access through your desktop’s global-shortcut portal. Approve the prompt; the desktop may choose a different combination. On Ubuntu / GNOME versions without that portal, Save checks desktop bindings and adds a zega Search custom shortcut in Keyboard Settings. On current Omarchy, Save adds a managed shortcut to your personal Hyprland bindings and checks for conflicts. Existing bindings are preserved. Custom or older Hyprland setups can use the platform guide. Desktop acceptance alone does not prove a key works: run the keypress test. On X11, zega checks direct registration. If setup fails, use the tray’s Search action.</p>}
-    </section>
+      {view === 'change' && <fieldset className="shortcut-manual"><legend>Choose keys</legend>
+        <div className="shortcut-actions">{(['control', 'alt', 'shift', 'superKey'] as const).map(modifier => <label key={modifier}><input type="checkbox" checked={binding[modifier]} onChange={event => setBinding(current => ({...current, [modifier]: event.target.checked}))} />{{control: 'Control', alt: mac ? 'Option' : 'Alt', shift: 'Shift', superKey: mac ? 'Command' : 'Super'}[modifier]}</label>)}
+          <select aria-label="Key" value={binding.key} onChange={event => setBinding(current => ({...current, key: event.target.value}))}>{['Space', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(key => `Key${key}`), ...Array.from({length: 12}, (_, index) => `F${index + 1}`)].map(key => <option key={key} value={key}>{key.replace(/^Key/, '')}</option>)}</select>
+        </div>
+        <button type="button" className="shortcut-link" disabled={!native || busy} onClick={() => { setBinding(recommended); setRecording(false); setView('shortcut'); void action('shortcut_apply', { binding: recommended }); }}>Use default</button>
+      </fieldset>}
+      {view === 'shortcut' && <div className="shortcut-status" role="status" aria-live="polite">
+        {problem ? <p role="alert">{problem}</p> : waiting ? <p>Switch to another app and press <strong>{status?.label}</strong> within 30 seconds.</p>
+          : received ? <p>Keypress received. Did only zega open, and did typing work without a click?</p>
+          : confirmed ? <p>Shortcut tested successfully.</p>
+          : timeout || status?.phase === 'expired' ? <p>No shortcut received. Try again or change the keys.</p>
+          : <p>{applied && status?.registered ? 'Saved. Try it from another app.' : 'Save these keys, then try them from another app.'}</p>}
+      </div>}
+      <div className="shortcut-actions">
+        {received ? <><button type="button" className="shortcut-primary" disabled={busy} onClick={() => void action('shortcut_confirm')}>Yes, it worked</button><button type="button" onClick={test}>Try again</button></>
+          : confirmed ? <button type="button" className="shortcut-primary" onClick={() => { void invoke('close_shortcut_setup').catch(reason => setError(String(reason))); }}>Done</button>
+          : <button type="button" className="shortcut-primary" disabled={!native || !status || busy || recording || !!waiting} onClick={test}>{busy ? 'Checking…' : waiting ? 'Listening…' : applied && status?.registered ? 'Test shortcut' : 'Save & test'}</button>}
+      </div>
+    </>}
+    {view !== 'shortcut' && error && <p role="alert">{error}</p>}
+    <footer><button type="button" className="shortcut-link" disabled={!native} onClick={() => { void invoke('open_search_window').catch(reason => setError(String(reason))); }}>Open search</button>{view !== 'help' && <button type="button" className="shortcut-link" onClick={() => { setView('help'); setRecording(false); }}>Help</button>}</footer>
   </main>;
 }

@@ -8,11 +8,19 @@ search. The setup is bundled, works offline, and does not send computer data
 anywhere. It opens on first launch and when registration fails. `--autostart`
 keeps the main window and setup hidden at login.
 
-1. Click **Use default** to save and apply the platform default in one step, or
-   choose a custom combination and **Save & check availability**.
-2. **Start keypress test**, focus a different application, and press the keys.
-3. Without clicking, type a few letters. Return to setup and confirm that **only
-   zega search** appeared and received the typing.
+1. Click **Test shortcut**, or **Save & test** on first setup.
+2. Focus a different application and press the displayed keys within 30 seconds.
+3. Type without clicking. Return to setup, choose **Yes, it worked** only if zega
+   alone opened and received the typing, then **Done**.
+
+Click the displayed combination to record new keys, or **Change** to choose
+modifiers and a key without triggering an occupied shortcut. **Use default**
+saves the platform default immediately. **Help** opens a separate view for the
+current platform. **Open search** always provides a click fallback.
+
+The default setup window is 520×440 and can be resized down to 480×400. The
+normal, error, edit, help, waiting, received, and confirmed views are checked at
+that minimum size: every button remains visible without scrolling.
 
 Registration never marks a test successful. Native delivery must arrive within
 30 seconds, from outside a zega window, and the search window must open. A click
