@@ -65,6 +65,13 @@ impl PictureAccess {
 }
 
 impl SettingsIndex {
+    pub fn search_actions(&self) -> Vec<(String, String)> {
+        self.0
+            .iter()
+            .map(|pane| (pane.label.to_owned(), pane.bundle_id.clone()))
+            .collect()
+    }
+
     pub fn discover() -> Self {
         let roots = [
             PathBuf::from("/System/Library/ExtensionKit/Extensions"),

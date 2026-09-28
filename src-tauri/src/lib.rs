@@ -6,6 +6,7 @@ mod desktop_identity;
 mod gnome_shortcut;
 #[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
 mod hyprland;
+mod index_bridge;
 mod local;
 mod loopback;
 mod menu;
@@ -43,6 +44,11 @@ pub fn run() {
     builder
         .invoke_handler(tauri::generate_handler![
             appearance::native_theme,
+            index_bridge::index_search,
+            index_bridge::index_status,
+            index_bridge::index_pause,
+            index_bridge::index_rebuild,
+            index_bridge::index_open_result,
             account::account_start,
             account::account_cancel,
             account::account_status,
@@ -68,7 +74,12 @@ pub fn run() {
         .setup(|app| {
             appearance::initialize(app.handle());
             menu::install_tray(app.handle())?;
-            app.manage(local::SettingsIndex::discover());
+            let settings = local::SettingsIndex::discover();
+            app.manage(index_bridge::IndexState::start(
+                app.handle(),
+                &settings.search_actions(),
+            ));
+            app.manage(settings);
             app.manage(local::PictureAccess::load(app.handle()));
             let handle = app.handle().clone();
             let state = AccountState::new(handle).map_err(|error| error.to_string())?;

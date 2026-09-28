@@ -1,0 +1,62 @@
+// Desktop computer graph: metadata only. IN_FOLDER = in-folder, ON_VOLUME = on-volume,
+// TAKEN_ON = taken-on, TAKEN_AT = taken-at, SHOT_WITH = shot-with.
+schema {
+type File {
+key: String name: String path: String volume: String fileId: String fingerprint: String
+size: Int mtime: Int offline: Bool search: String
+inFolder: IN_FOLDER -> Folder onVolume: ON_VOLUME -> Volume
+}
+type Folder {
+key: String name: String path: String volume: String fileId: String fingerprint: String
+size: Int mtime: Int offline: Bool search: String
+inFolder: IN_FOLDER -> Folder onVolume: ON_VOLUME -> Volume
+}
+type App {
+key: String name: String path: String volume: String fileId: String fingerprint: String
+size: Int mtime: Int offline: Bool search: String
+inFolder: IN_FOLDER -> Folder onVolume: ON_VOLUME -> Volume
+}
+type Photo {
+key: String name: String path: String volume: String fileId: String fingerprint: String
+size: Int mtime: Int offline: Bool search: String
+inFolder: IN_FOLDER -> Folder onVolume: ON_VOLUME -> Volume
+takenOn: TAKEN_ON -> Day takenAt: TAKEN_AT -> Place shotWith: SHOT_WITH -> Camera
+captured?: String lat?: Float lon?: Float width?: Int height?: Int duration?: Float
+}
+type Video {
+key: String name: String path: String volume: String fileId: String fingerprint: String
+size: Int mtime: Int offline: Bool search: String
+inFolder: IN_FOLDER -> Folder onVolume: ON_VOLUME -> Volume
+takenOn: TAKEN_ON -> Day takenAt: TAKEN_AT -> Place shotWith: SHOT_WITH -> Camera
+captured?: String lat?: Float lon?: Float width?: Int height?: Int duration?: Float
+}
+type Volume { key: String name: String offline: Bool }
+type Place { key: String name: String lat: Float lon: Float }
+type Camera { key: String name: String }
+type Day { key: String date: Date inPeriod: IN_PERIOD -> Period[] }
+type Period { key: String name: String starts: Date ends: Date period from starts to ends named by name }
+type Scan { key: String completed: Int }
+type Action { key: String name: String target: String search: String }
+}
+unique {
+File { key }
+Folder { key }
+App { key }
+Photo { key }
+Video { key }
+Volume { key }
+Place { key }
+Camera { key }
+Day { key }
+Period { key }
+Action { key }
+Scan { key }
+}
+index {
+text File { search }
+text Folder { search }
+text App { search }
+text Photo { search }
+text Video { search }
+text Action { search }
+}
