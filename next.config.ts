@@ -5,6 +5,7 @@ const nextConfig: NextConfig = {
   trailingSlash: true,
   images: { unoptimized: true },
   reactStrictMode: true,
+  devIndicators: false,
   agentRules: false,
   turbopack: { root: process.cwd() },
 };
