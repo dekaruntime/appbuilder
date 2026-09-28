@@ -16,7 +16,7 @@
     --bg: #0B0F14; --win: #12181F; --ink: #EEF3F0; --soft: #9AA8A3; --edge: #243039; --panel: #161E26; --tint: #1A232C;
     --accent: #3CCB77; --accent-soft: #123320; --link: #8AB4F8; --var-bg: #3E567D; --var-ink: #E6EEFB; --desk-a: #1E3350; --desk-b: #4A3B28;
   }
-  html, body { background: var(--bg); }
+html, body { background: var(--bg); }
   body { margin: 0; color: var(--ink); font: 14px/1.5 var(--sans); padding-inline: 16px; }
   button { font: inherit; color: inherit; cursor: pointer; }
   :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -131,9 +131,9 @@
   :root[data-theme="dark"] .menubar { background: rgba(0,0,0,.35); color: #eee; }
   @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) .menubar { background: rgba(0,0,0,.35); color: #eee; } }
   .menubar .z { margin-left: auto; width: 20px; height: 18px; border-radius: 5px; display: grid; place-items: center; font: 700 12px var(--sans); background: rgba(255,255,255,.55); color: #111; outline: 2px solid rgba(12,139,67,.7); }
-  .launcher { width: min(680px, calc(100% - 32px)); background: color-mix(in srgb, var(--win) 88%, transparent); backdrop-filter: blur(30px); border: 1px solid var(--edge); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
+  .launcher { width: min(680px, calc(100% - 32px)); background: color-mix(in srgb, var(--win) 72%, transparent); backdrop-filter: blur(30px); border: 1px solid var(--edge); border-radius: 16px; box-shadow: var(--shadow); overflow: hidden; }
   .launcher .lhead { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--edge); }
-  .launcher .lhead .gi { width: 26px; height: 26px; border-radius: 8px; background: var(--ink); color: var(--win); display: grid; place-items: center; flex: none; }
+  .launcher .lhead .gi { width: 26px; height: 26px; color: var(--ink); background: transparent; display: grid; place-items: center; flex: none; }
   .launcher .lhead .ph { flex: 1; font-size: 18px; }
   .lres { padding: 8px; display: grid; gap: 2px; max-height: 420px; overflow: auto; }
   .lsec { font: 600 11px var(--sans); color: var(--soft); text-transform: uppercase; letter-spacing: .08em; padding: 8px 10px 4px; }
@@ -191,14 +191,6 @@ body { padding: 0; }
 .window { height: 100%; min-height: 0; border-radius: 0; box-shadow: none; }
 .app { min-height: 0; height: calc(100% - 38px); }
 .content { min-width: 0; overflow: auto; }
-.launcher-window { height: 100%; }
-.launcher-window { position: fixed; inset: 0; z-index: 50; display: grid; align-content: start; justify-items: center; padding: max(12vh, 70px) 16px 20px; background: radial-gradient(120% 90% at 20% 10%, var(--desk-a), transparent 60%), radial-gradient(90% 80% at 90% 100%, var(--desk-b), transparent 60%), var(--bg); }
-.launch-head { width: min(680px, 100%); display: flex; justify-content: space-between; padding: 14px 16px; border: 1px solid var(--edge); border-bottom: 0; border-radius: 16px 16px 0 0; background: var(--win); color: var(--soft); font: 500 12px var(--mono); }
-.launcher-window .search { width: min(680px, 100%); border-radius: 0; border-inline: 1px solid var(--edge); }
-.launcher-window .search input { inset-inline-end: 90px; }
-.lrows { width: min(680px, 100%); padding: 8px; background: var(--win); border: 1px solid var(--edge); border-top: 0; border-radius: 0 0 16px 16px; box-shadow: var(--shadow); }
-.lrow { grid-template-columns: minmax(0,1fr) auto; }
-.desk { height: 100%; }
 .lights button { width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; }
 .lights button i { width: 12px; height: 12px; }
 .signed-in { display: flex; align-items: center; gap: 8px; font-size: 12px; }
@@ -212,3 +204,52 @@ body { padding: 0; }
 .search input:focus { color: var(--ink); }
 .search input::placeholder { color: transparent; }
 .search input:focus::placeholder { color: var(--soft); }
+
+html:has(.float-root), body:has(.float-root) { overflow: hidden; background: transparent; }
+.float-root { position: fixed; inset: 0; display: grid; padding: 0; background: transparent; }
+/* Compositors supply desktop blur; keep a readable tint where native material is absent. */
+.float-panel { box-sizing: border-box; width: 100%; height: 100%; min-height: 0; margin: 0; display: flex; flex-direction: column; background: color-mix(in srgb, var(--panel) 97%, transparent); backdrop-filter: none; box-shadow: none; overflow: hidden; }
+.float-root[data-native-material="true"] .float-panel { background: transparent; }
+.float-root[data-square-corners="true"] .float-panel, .float-root[data-square-corners="true"] .float-search { border-radius: 0; }
+.float-panel .lres { flex: 1; min-height: 0; max-height: none; align-content: start; }
+.float-panel .lhead, .float-panel .float-search, .float-panel .lfoot { flex-shrink: 0; }
+.float-panel .lfoot { background: color-mix(in srgb, var(--tint) 60%, transparent); }
+.float-panel .lhead { user-select: none; cursor: default; }
+.float-word { font: 700 14px var(--sans); letter-spacing: -.03em; color: var(--ink); }
+.float-search { box-sizing: border-box; width: 100%; border-radius: 10px; padding: 7px 8px 7px 14px; }
+.float-search input { position: static; inset: auto; flex: 1; width: auto; min-width: 0; color: var(--ink); caret-color: var(--accent); font-size: 20px; }
+.float-search input::placeholder { color: var(--soft); }
+.lres { padding: 8px; display: grid; gap: 2px; max-height: 284px; overflow: auto; }
+.float-group .lrow { width: 100%; border: 0; background: transparent; color: var(--ink); text-align: left; }
+.float-group .lrow:hover { background: var(--tint); }
+.float-group .lrow.sel { background: var(--var-bg); color: var(--var-ink); }
+.float-group .gear { width: 28px; height: 28px; border-radius: 7px; background: #8A8F98; display: grid; place-items: center; color: #fff; }
+.float-group .fi { width: 28px; height: 32px; border-radius: 4px; display: grid; place-items: center; font: 700 8px var(--mono); color: #fff; }
+.float-empty { padding: 12px; margin: 0; color: var(--soft); }
+.float-panel .lfoot { align-items: center; gap: 14px; }
+.float-panel .lfoot .kbd { padding: 1px 5px; }
+.local-note { margin-left: auto; }
+
+/* Setup uses the locked desktop palette and cqx's shortcut dialog structure. */
+.shortcut-page { box-sizing: border-box; width: 100%; max-width: 520px; min-height: 100svh; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 14px; font-size: 14px; }
+.shortcut-page .tb-word { margin-left: 0; }
+.shortcut-page h1 { font-size: 23px; letter-spacing: -.03em; margin: 12px 0 0; }
+.shortcut-page p { color: var(--soft); margin: 0; line-height: 1.5; }
+.shortcut-key-row { display: flex; align-items: center; gap: 12px; }
+.shortcut-page .shortcut-key { min-width: 130px; font-size: 18px; padding: 12px 16px; }
+.shortcut-help { display: grid; gap: 16px; }
+.shortcut-help .shortcut-primary { justify-self: start; }
+.shortcut-page footer { display: flex; justify-content: space-between; margin-top: auto; padding-top: 6px; }
+.shortcut-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.shortcut-page button { background: var(--panel); border: 1px solid var(--edge); border-radius: 8px; padding: 8px 12px; }
+.shortcut-page button:disabled { opacity: .5; cursor: default; }
+.shortcut-page button[aria-pressed="true"] { background: var(--var-bg); color: var(--var-ink); }
+.shortcut-page .shortcut-link { padding: 4px 0; border: 0; background: transparent; color: var(--link); }
+.shortcut-page .shortcut-primary { background: var(--accent); color: var(--win); }
+.shortcut-page [role="alert"] { color: var(--ink); border-left: 3px solid var(--accent); padding-left: 12px; }
+
+.shortcut-manual { margin: 0; padding: 8px 0 0; border: 0; color: var(--soft); font-size: 12px; }
+.shortcut-manual legend { padding: 0; }
+.shortcut-manual label { display: flex; align-items: center; gap: 3px; }
+.shortcut-manual .shortcut-actions { align-items: center; margin: 0 0 8px; }
+.shortcut-manual select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--edge); border-radius: 5px; padding: 4px; }
