@@ -123,11 +123,18 @@ try {
     assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), before + 1, `${selector} starts a native drag`);
   }
   const drags = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
-  await launcher.locator('.lhead .kbd').dispatchEvent('mousedown', { button: 0 });
+  assert.equal(await launcher.locator('.lhead .kbd').count(), 0, 'the panel header has no shortcut badge');
+  assert.equal(await launcher.getByRole('button', {name: 'Open selected result'}).count(), 0, 'search needs no submit button');
+  assert.equal(await input.evaluate(element => getComputedStyle(element).fontSize), '17px', 'search text is three pixels larger');
   await input.dispatchEvent('mousedown', { button: 0 });
   await launcher.locator('.lhead').dispatchEvent('mousedown', { button: 2 });
   assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), drags, 'search editing and right-click do not drag the window');
   await launcher.screenshot({ path: '.tmp/desktop-agent-launcher.png' });
+  await input.fill('Downloads');
+  await launcher.waitForFunction(() => document.querySelectorAll('.float-group .lrow').length === 1);
+  assert.equal(await launcher.getByText('Local fixture.txt').count(), 1, 'typing filters results without submitting');
+  await input.fill('');
+  await launcher.waitForFunction(() => document.querySelectorAll('.float-group .lrow').length === 2);
   await input.press('ArrowDown');
   await input.press('Enter');
   await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'open_local_file'));
@@ -144,7 +151,7 @@ try {
   commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
   assert.ok(commands.includes('show_main_window'), 'Command+Return is the explicit main-window action');
   assert.equal(await launcher.evaluate(() => window.mainVisible), true);
-  for (const target of ['input', '.lhead .kbd', '.float-group .lrow', '.lfoot .local-note']) {
+  for (const target of ['input', '.float-group .lrow', '.lfoot .local-note']) {
     await launcher.reload({ waitUntil: 'networkidle' });
     await launcher.getByText('Local fixture.txt').first().waitFor();
     if (target === '.lfoot .local-note') await launcher.locator(target).click();

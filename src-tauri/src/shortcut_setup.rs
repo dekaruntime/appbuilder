@@ -449,10 +449,12 @@ pub fn show_shortcut_setup(app: AppHandle) -> Result<(), String> {
                 .min_inner_size(480.0, 400.0)
                 .resizable(true)
                 .visible(false)
+                .center()
                 .build()
                 .map_err(|e| e.to_string())?
         }
     };
+    crate::window_placement::prepare(&window).map_err(|e| e.to_string())?;
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())
 }
