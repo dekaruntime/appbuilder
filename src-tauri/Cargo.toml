@@ -37,6 +37,11 @@ objc2-app-kit = { version = "0.3.2", features = ["NSApplication"] }
 gdk = "0.18"
 ashpd = { version = "0.13", default-features = false, features = ["tokio", "global_shortcuts"] }
 futures-util = "0.3"
+notify = "8.2"
+toml = "1.1.6"
+
+[dev-dependencies]
+toml = "1.1.6"
 
 # Compile the portal adapter in macOS tests too; hardware dispatch still needs Linux.
 [target.'cfg(target_os = "macos")'.dev-dependencies]

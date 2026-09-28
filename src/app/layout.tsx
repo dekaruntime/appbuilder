@@ -1,5 +1,6 @@
 import type { Metadata, Viewport } from 'next';
 import { WorkerSetup } from './WorkerSetup';
+import NativeTheme from '../components/NativeTheme';
 import '@fontsource-variable/figtree';
 import '@fontsource/ibm-plex-mono/400.css';
 import '@fontsource/ibm-plex-mono/500.css';
@@ -17,5 +18,5 @@ export const viewport: Viewport = {
 };
 
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
-  return <html lang="en"><body><WorkerSetup />{children}<script src="/desktop-auth.js" defer /></body></html>;
+  return <html lang="en"><body><NativeTheme /><WorkerSetup />{children}<script src="/desktop-auth.js" defer /></body></html>;
 }

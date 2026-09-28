@@ -1,4 +1,5 @@
 mod account;
+mod appearance;
 #[cfg(target_os = "linux")]
 mod desktop_identity;
 #[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
@@ -33,6 +34,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init());
     builder
         .invoke_handler(tauri::generate_handler![
+            appearance::native_theme,
             account::account_start,
             account::account_cancel,
             account::account_status,
@@ -55,6 +57,7 @@ pub fn run() {
             shortcut_setup::show_shortcut_setup,
         ])
         .setup(|app| {
+            appearance::initialize(app.handle());
             menu::install_tray(app.handle())?;
             app.manage(local::SettingsIndex::discover());
             app.manage(local::PictureAccess::load(app.handle()));
@@ -89,6 +92,7 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building zega desktop")
         .run(|_app, _event| {
+            if matches!(_event, tauri::RunEvent::Exit) { appearance::shutdown(_app); }
             #[cfg(target_os = "macos")]
             if matches!(_event, tauri::RunEvent::Exit) {
                 shortcut::uninstall();

@@ -54,6 +54,7 @@ try {
       invoke: async command => {
         if (command === 'plugin:event|listen') return 1;
         if (command === 'plugin:event|unlisten') return null;
+        if (command === 'native_theme') return null;
         if (command === 'shortcut_status') return { registered: true, label: '⌥Space', platform: 'macos' };
         if (command === 'local_recent_files') return [{ name: 'fixture.txt', location: 'Documents', fileType: 'TXT', modifiedLabel: '2 min ago', path: '/Users/test/Documents/fixture.txt' }];
         if (command === 'local_settings_panes') return [];
@@ -91,6 +92,7 @@ try {
       invoke: async (command, args) => {
         window.mockCommands.push([command, args]);
         if (command === 'show_main_window') window.mainVisible = true;
+        if (command === 'native_theme') return null;
         if (command === 'shortcut_status') return { registered: true, label: 'Alt+Space', platform: new URL(location.href).searchParams.get('platform') || 'macos', squareCorners: new URL(location.href).searchParams.has('omarchy') };
         if (command === 'plugin:event|listen') return 1;
         if (command === 'local_recent_files') return [{

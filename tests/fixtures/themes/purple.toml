@@ -1,0 +1,8 @@
+mode = "dark"
+background = "#221b30"
+foreground = "#e5d9f5"
+accent = "#be95ff"
+selection = "#49375f"
+muted = "#b2a3c4"
+dark_background = "#191323"
+blue = "#9bbcff"

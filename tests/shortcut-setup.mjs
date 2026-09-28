@@ -31,6 +31,7 @@ try {
         if (command === 'plugin:event|listen') { window.events[args.event] = callbacks[args.handler]; return counter; }
         if (command === 'plugin:event|unlisten') return null;
         if (command === 'local_settings_panes') return [{label: 'Keyboard', bundleId: 'com.apple.FixtureKeyboard-Settings.extension'}];
+        if (command === 'native_theme') return null;
         if (command === 'shortcut_status') return structuredClone(window.shortcutStatus);
         if (command === 'shortcut_apply') {
           window.shortcutStatus = { ...window.shortcutStatus, binding: args.binding, label: '⌃⌥K', registered: true, error: null, phase: 'idle' };
