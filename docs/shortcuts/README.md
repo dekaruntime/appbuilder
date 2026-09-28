@@ -1,6 +1,6 @@
 # Search shortcut setup
 
-Default: **Option+Space on macOS; Alt+Space on Windows and Linux**. It is a
+Default: **Option+Space on macOS; Alt+Space on Windows; Super+Z on Linux**. It is a
 starting point, not a promise that every desktop leaves those keys free.
 
 Open **Search shortcut…** in zega's tray menu, or click the shortcut badge in
@@ -17,7 +17,8 @@ Registration never marks a test successful. Native delivery must arrive within
 30 seconds, from outside a zega window, and the search window must open. A click
 cannot pass this test. Changing the combination or restarting resets the test.
 The chosen combination persists locally; registration is checked each launch.
-No system keybindings are changed automatically.
+Existing desktop bindings are preserved. On current Omarchy, Save adds a managed
+block for zega to your personal Hyprland bindings and reloads the configuration.
 
 Click-to-open remains available if registration, desktop permission, or testing
 fails. A second launch routes to the existing process instead of registering a
@@ -58,16 +59,18 @@ registration uses a fresh D-Bus connection and identifies the app before making
 portal requests. This supports standalone builds and `tauri dev`, as well as
 retrying after a portal restart.
 
-Hyprland's portal can expose an action without assigning a key. While zega runs:
+Hyprland's portal can expose an action without assigning a key. On current
+Omarchy (Hyprland 0.55+ with `hypr/bindings.lua`), Save checks active bindings,
+then adds its own marked block to that personal file. It never replaces another
+action. Edited zega blocks, existing config errors, and custom layouts produce an
+explanation instead of overwriting the configuration. Failed reloads restore the
+original file when it has not been concurrently changed.
 
-1. Use `hyprctl globalshortcuts` to find its `search` action and exact application
-   identifier. Do not assume the identifier is identical in dev and packaged apps.
-2. Check existing bindings using Omarchy's keybinding UI before assigning Alt+Space.
-3. Bind that action with Hyprland's `global` dispatcher in the user configuration.
-   Use the syntax for the installed version: newer versions use Lua; older ones
-   use `bind = ...`. Avoid changing Omarchy's shipped defaults.
-4. Run zega's outside-app test against both a native Wayland app and an XWayland
-   app. Confirm no second action runs. Repeat after a desktop login.
+For other layouts, use `hyprctl globalshortcuts` to find zega's search action and
+bind it with the `global` dispatcher in your personal configuration. Older
+Hyprland uses `bind = ...`; newer versions use Lua. The default is **Super+Z**.
+Run the outside-app keypress test with both native Wayland and XWayland apps,
+and repeat after login. Portal acceptance alone does not prove delivery.
 
 The portal adapter and its application wiring compile in the Mac test target as
 an API check. Native Linux build/check/clippy have also passed on Omarchy 4.0.3

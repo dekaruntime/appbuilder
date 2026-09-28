@@ -15,6 +15,7 @@ pub struct Status {
     binding: Binding,
     label: String,
     platform: &'static str,
+    square_corners: bool,
     portal: bool,
     registered: bool,
     error: Option<String>,
@@ -133,6 +134,8 @@ pub fn initialize(app: &AppHandle) -> Result<bool, String> {
         label: binding.label(),
         binding,
         platform: std::env::consts::OS,
+        square_corners: cfg!(target_os = "linux")
+            && std::path::Path::new("/usr/share/omarchy").is_dir(),
         portal: uses_portal(),
         registered: registration.is_ok(),
         error: load_error.or(registration.err()),
@@ -250,11 +253,22 @@ pub async fn shortcut_apply(app: AppHandle, binding: Binding) -> Result<Status, 
                 },
             )
             .await;
-            Some(result.map(|registration| {
+            #[allow(clippy::bind_instead_of_map)]
+            // Linux configuration can fail inside this closure.
+            let configured = result.and_then(|registration| {
+                #[cfg(target_os = "linux")]
+                let label = crate::hyprland::configure(
+                    &app.path().config_dir().map_err(|e| e.to_string())?,
+                    &binding,
+                    &app.config().identifier,
+                )?
+                .unwrap_or_else(|| registration.label.clone());
+                #[cfg(not(target_os = "linux"))]
                 let label = registration.label.clone();
                 *current = Some(registration);
-                label
-            }))
+                Ok(label)
+            });
+            Some(configured)
         } else {
             None
         }
@@ -287,6 +301,8 @@ pub async fn shortcut_apply(app: AppHandle, binding: Binding) -> Result<Status, 
                     }),
                 binding: binding.clone(),
                 platform: std::env::consts::OS,
+                square_corners: cfg!(target_os = "linux")
+                    && std::path::Path::new("/usr/share/omarchy").is_dir(),
                 portal: setup.status.portal,
                 registered: registration.is_ok(),
                 error: registration.err(),
@@ -398,6 +414,7 @@ mod tests {
                 binding: Binding::default(),
                 label: "Alt+Space".into(),
                 platform: "test",
+                square_corners: false,
                 portal: false,
                 registered,
                 error: None,

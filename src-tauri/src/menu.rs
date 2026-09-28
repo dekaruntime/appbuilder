@@ -100,7 +100,9 @@ fn search_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     )
     .title("zega Search")
     .inner_size(680.0, 440.0)
-    .min_inner_size(600.0, 340.0)
+    // Wayland compositors need matching limits to recognize a fixed-size panel.
+    .min_inner_size(680.0, 440.0)
+    .max_inner_size(680.0, 440.0)
     .resizable(false)
     .decorations(false)
     .transparent(true)

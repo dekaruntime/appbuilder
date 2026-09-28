@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { Binding, ShortcutStatus, defaults, bindingLabel } from '../../lib/shortcut';
+import { Binding, ShortcutStatus, defaults, bindingLabel, platformDefault } from '../../lib/shortcut';
 
 export default function ShortcutSetup() {
   const [status, setStatus] = useState<ShortcutStatus | null>(null);
@@ -16,6 +16,7 @@ export default function ShortcutSetup() {
   const [help, setHelp] = useState('macos');
   const [keyboardPane, setKeyboardPane] = useState<string | null>(null);
   const mac = status?.platform === 'macos';
+  const recommended = platformDefault(status?.platform ?? 'macos');
 
   useEffect(() => {
     if (!isTauri()) { setError('Open this page in the zega desktop app to set up a global shortcut.'); return; }
@@ -53,12 +54,12 @@ export default function ShortcutSetup() {
   return <main className="shortcut-page">
     <header><span className="tb-word">zega <span className="v">computer</span></span><h1>Search from anywhere</h1><p>Set a shortcut, then try it while another app is in front. You can also open search with the button below or from zega’s tray menu.</p></header>
     <section aria-labelledby="choose-title"><h2 id="choose-title">1. Choose your shortcut</h2>
-      <div className="shortcut-actions"><button type="button" aria-pressed={recording} onClick={() => setRecording(true)} onKeyDown={record} onBlur={() => setRecording(false)}>{recording ? 'Press a combination… (Esc cancels)' : bindingLabel(binding, mac)}</button><button type="button" onClick={() => { setBinding(defaults); setRecording(false); }}>Use default</button></div>
+      <div className="shortcut-actions"><button type="button" aria-pressed={recording} onClick={() => setRecording(true)} onKeyDown={record} onBlur={() => setRecording(false)}>{recording ? 'Press a combination… (Esc cancels)' : bindingLabel(binding, mac)}</button><button type="button" onClick={() => { setBinding(recommended); setRecording(false); }}>Use default</button></div>
       <details className="shortcut-manual"><summary>Choose keys without pressing the shortcut</summary>
         <div className="shortcut-actions">{(['control', 'alt', 'shift', 'superKey'] as const).map(modifier => <label key={modifier}><input type="checkbox" checked={binding[modifier]} onChange={event => setBinding(current => ({...current, [modifier]: event.target.checked}))} />{{control: 'Control', alt: mac ? 'Option' : 'Alt', shift: 'Shift', superKey: mac ? 'Command' : 'Super'}[modifier]}</label>)}</div>
         <label>Key <select value={binding.key} onChange={event => setBinding(current => ({...current, key: event.target.value}))}>{['Space', ...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'.split('').map(key => `Key${key}`), ...Array.from({length: 12}, (_, index) => `F${index + 1}`)].map(key => <option key={key} value={key}>{key.replace(/^Key/, '')}</option>)}</select></label>
       </details>
-      <p className="shortcut-note">Default: {bindingLabel(defaults, mac)}. Click the combination to record a different one. Use Space, a letter, or F1–F12 with modifiers.</p>
+      <p className="shortcut-note">Default: {bindingLabel(recommended, mac)}. Click the combination to record a different one. Use Space, a letter, or F1–F12 with modifiers.</p>
       <button type="button" className="shortcut-primary" disabled={!native || busy || recording} onClick={() => void action('shortcut_apply', { binding })}>{busy ? 'Checking…' : 'Save & check availability'}</button>
       {status?.registered && <p>{status.portal ? 'Desktop accepted the search action' : 'Registered'}: <kbd>{status.label}</kbd>. A keypress test is still needed after changes or restart.</p>}
       {(error || status?.error) && <p role="alert">{error || status?.error}</p>}
@@ -76,7 +77,7 @@ export default function ShortcutSetup() {
     <section aria-labelledby="help-title"><h2 id="help-title">Platform help</h2><nav className="shortcut-actions" aria-label="Platform help">{['macos', 'windows', 'linux'].map(platform => <button type="button" key={platform} aria-pressed={help === platform} onClick={() => setHelp(platform)}>{platform === 'macos' ? 'macOS' : platform === 'windows' ? 'Windows' : 'Linux / Omarchy'}</button>)}</nav>
       {help === 'macos' && <><p>macOS system shortcuts are checked before registration. Other launchers can share a shortcut without reporting a conflict, so the keypress test matters. Change a reserved binding in System Settings → Keyboard → Keyboard Shortcuts, or choose another combination here. zega does not change system shortcuts.</p>{keyboardPane && <button type="button" onClick={() => { void invoke('open_settings_pane', { bundleId: keyboardPane }).catch(reason => setError(String(reason))); }}>Open Keyboard Settings</button>}</>}
       {help === 'windows' && <p>Alt+Space can overlap with the window menu or PowerToys Run. zega reports registration errors, but another app may still intercept keys. Try Control+Alt+Space if needed. Retest while another app is focused, including any app running as administrator.</p>}
-      {help === 'linux' && <p>Linux desktops control global shortcuts differently. On Wayland, Save requests access through your desktop’s global-shortcut portal. Approve the prompt; the desktop may choose a different combination. On Omarchy / Hyprland, run hyprctl globalshortcuts to find zega’s search action, then bind that action in your desktop’s keyboard configuration. Portal acceptance alone does not prove a key is bound: run the keypress test. On X11, zega checks direct registration. If either is unavailable, use the tray’s Search action.</p>}
+      {help === 'linux' && <p>Linux desktops control global shortcuts differently. On Wayland, Save requests access through your desktop’s global-shortcut portal. Approve the prompt; the desktop may choose a different combination. On current Omarchy, Save adds a managed shortcut to your personal Hyprland bindings and checks for conflicts. Existing bindings are preserved. Custom or older Hyprland setups can use the platform guide. Portal acceptance alone does not prove a key is bound: run the keypress test. On X11, zega checks direct registration. If either is unavailable, use the tray’s Search action.</p>}
     </section>
   </main>;
 }

@@ -54,7 +54,7 @@ try {
       invoke: async command => {
         if (command === 'plugin:event|listen') return 1;
         if (command === 'plugin:event|unlisten') return null;
-        if (command === 'shortcut_status') return { registered: true, label: '⌥Space' };
+        if (command === 'shortcut_status') return { registered: true, label: '⌥Space', platform: 'macos' };
         if (command === 'local_recent_files') return [{ name: 'fixture.txt', location: 'Documents', fileType: 'TXT', modifiedLabel: '2 min ago', path: '/Users/test/Documents/fixture.txt' }];
         if (command === 'local_settings_panes') return [];
         if (command === 'local_user_first_name') return 'Test';
@@ -91,6 +91,7 @@ try {
       invoke: async (command, args) => {
         window.mockCommands.push([command, args]);
         if (command === 'show_main_window') window.mainVisible = true;
+        if (command === 'shortcut_status') return { registered: true, label: 'Alt+Space', platform: new URL(location.href).searchParams.get('platform') || 'macos', squareCorners: new URL(location.href).searchParams.has('omarchy') };
         if (command === 'plugin:event|listen') return 1;
         if (command === 'local_recent_files') return [{
           name: 'Local fixture.txt', location: 'Documents', fileType: 'TXT',
@@ -143,6 +144,15 @@ try {
   commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
   assert.ok(commands.includes('show_main_window'), 'Command+Return is the explicit main-window action');
   assert.equal(await launcher.evaluate(() => window.mainVisible), true);
+  await launcher.goto('http://localhost:1421/launcher/?platform=linux', { waitUntil: 'networkidle' });
+  await launcher.getByText('Local fixture.txt').first().waitFor();
+  assert.notEqual(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'Other Linux desktops retain rounded corners');
+  const linuxBackground = await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor);
+  assert.match(linuxBackground, /\/\s*0\.92\)/, 'Linux needs a readable translucent surface without macOS material');
+  assert.match(await launcher.locator('.float-root').evaluate(element => getComputedStyle(element).backgroundColor), /0, 0, 0, 0|transparent/, 'Linux keeps the rounded corners transparent');
+  await launcher.goto('http://localhost:1421/launcher/?platform=linux&omarchy=1', { waitUntil: 'networkidle' });
+  assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'Omarchy uses square panel corners');
+  await launcher.screenshot({ path: '.tmp/desktop-linux-launcher.png' });
   assert.deepEqual(launcherErrors, [], `launcher console errors: ${launcherErrors.join(' | ')}`);
   await launcher.close();
   assert.deepEqual(errors, [], `browser console errors during local-data fixture: ${errors.join(' | ')}`);

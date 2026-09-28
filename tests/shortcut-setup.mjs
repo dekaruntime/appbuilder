@@ -81,6 +81,14 @@ try {
   await page.getByRole('button', { name: 'macOS', exact: true }).click();
   await page.getByRole('button', { name: 'Open Keyboard Settings' }).click();
   assert.ok((await page.evaluate(() => window.commands)).includes('open_settings_pane'));
+  await page.evaluate(() => {
+    window.shortcutStatus.platform = 'linux';
+    window.events['shortcut-status']({ payload: structuredClone(window.shortcutStatus) });
+  });
+  await page.getByRole('button', {name: 'Use default', exact: true}).click();
+  await page.getByRole('button', {name: 'Super+Z', exact: true}).waitFor();
+  await page.getByRole('button', {name: 'Save & check availability'}).click();
+  assert.deepEqual(await page.evaluate(() => window.shortcutStatus.binding), { key: 'KeyZ', alt: false, control: false, shift: false, superKey: true }, 'Linux saves the platform default through the real setup action');
   await page.screenshot({path: '.tmp/shortcut-setup.png'});
   assert.deepEqual(errors, []);
   console.log('PASS: conflict, customization, click fallback, native event acknowledgement, explicit confirmation, timeout, platform guidance; zero console errors');

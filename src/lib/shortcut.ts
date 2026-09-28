@@ -1,4 +1,9 @@
-import defaults from './launcher-shortcut.json';
+import platformDefaults from './launcher-shortcut.json';
+const defaults = platformDefaults.macos;
+
+export function platformDefault(platform: string) {
+  return platformDefaults[platform as keyof typeof platformDefaults] ?? defaults;
+}
 
 export type Binding = typeof defaults;
 export type ShortcutStatus = {

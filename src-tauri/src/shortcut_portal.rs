@@ -178,11 +178,15 @@ mod tests {
     use super::*;
     #[test]
     fn portal_accelerators_use_the_xdg_specification() {
-        assert_eq!(preferred_trigger(&Binding::default()), "ALT+space");
+        assert_eq!(
+            preferred_trigger(&Binding::for_platform("macos")),
+            "ALT+space"
+        );
+        assert_eq!(preferred_trigger(&Binding::for_platform("linux")), "LOGO+z");
         let binding = Binding {
             key: "KeyK".into(),
             control: true,
-            ..Binding::default()
+            ..Binding::for_platform("macos")
         };
         assert_eq!(preferred_trigger(&binding), "CTRL+ALT+k");
     }

@@ -1,6 +1,8 @@
 mod account;
 #[cfg(target_os = "linux")]
 mod desktop_identity;
+#[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
+mod hyprland;
 mod local;
 mod loopback;
 mod menu;

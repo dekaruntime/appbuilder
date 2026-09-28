@@ -20,6 +20,8 @@ export default function FloatingSearch() {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(0);
   const [visible, setVisible] = useState(true);
+  const [nativeMaterial, setNativeMaterial] = useState(false);
+  const [squareCorners, setSquareCorners] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -30,6 +32,9 @@ export default function FloatingSearch() {
       setLoading(false);
       return;
     }
+    void invoke<{platform: string; squareCorners: boolean}>('shortcut_status')
+      .then(status => { setNativeMaterial(status.platform === 'macos'); setSquareCorners(status.squareCorners); })
+      .catch(() => setNativeMaterial(false));
     void Promise.all([
       invoke<LocalFile[]>('local_recent_files'),
       invoke<LocalPane[]>('local_settings_panes'),
@@ -112,7 +117,7 @@ export default function FloatingSearch() {
     })}
   </section>;
 
-  return <main className="float-root"><div className="launcher float-panel" role="dialog" aria-label="zega floating search">
+  return <main className="float-root" data-native-material={nativeMaterial} data-square-corners={squareCorners}><div className="launcher float-panel" role="dialog" aria-label="zega floating search">
     <header className="lhead" onMouseDown={event => {
       if (event.button === 0 && isTauri()) {
         event.preventDefault();

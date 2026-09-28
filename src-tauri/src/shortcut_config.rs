@@ -12,12 +12,19 @@ pub struct Binding {
 
 impl Default for Binding {
     fn default() -> Self {
-        serde_json::from_str(include_str!("../../src/lib/launcher-shortcut.json"))
-            .expect("the bundled launcher shortcut is valid")
+        Self::for_platform(std::env::consts::OS)
     }
 }
 
 impl Binding {
+    pub fn for_platform(platform: &str) -> Self {
+        let mut defaults: std::collections::HashMap<String, Self> =
+            serde_json::from_str(include_str!("../../src/lib/launcher-shortcut.json"))
+                .expect("the bundled launcher shortcuts are valid");
+        defaults
+            .remove(platform)
+            .unwrap_or_else(|| defaults.remove("macos").unwrap())
+    }
     pub fn validate(&self) -> Result<(), String> {
         if !(self.alt || self.control || self.super_key) {
             return Err("Include Alt/Option, Control, or Super/Command.".into());
@@ -117,7 +124,7 @@ mod tests {
     use super::*;
     #[test]
     fn default_and_custom_binding_use_the_same_validated_configuration() {
-        let mut binding = Binding::default();
+        let mut binding = Binding::for_platform("macos");
         assert_eq!(binding.accelerator(), "Alt+Space");
         assert_eq!(binding.mac_key_code(), Ok(49));
         binding.control = true;
@@ -126,8 +133,11 @@ mod tests {
         assert!(binding.validate().is_ok());
         binding.key = "Enter".into();
         assert!(binding.validate().is_err());
-        binding = Binding::default();
+        binding = Binding::for_platform("macos");
         binding.alt = false;
         assert!(binding.validate().is_err());
+        let linux = Binding::for_platform("linux");
+        assert_eq!(linux.accelerator(), "Super+KeyZ");
+        assert!(linux.validate().is_ok());
     }
 }
