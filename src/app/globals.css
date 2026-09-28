@@ -70,17 +70,28 @@
   .landing .search { width: min(640px, 100%); padding: 6px 6px 6px 18px; }
   .landing .search .ph { font-size: 17px; }
   .shelves { width: min(900px, 100%); display: grid; grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr); gap: 28px; }
-  .shelf h3 { margin: 0 0 10px; font: 600 13px var(--sans); color: var(--soft); display: flex; justify-content: space-between; }
+  .shelf h3 { margin: 0 0 10px; font: 600 13px var(--sans); color: var(--soft); display: flex; justify-content: space-between; gap: 10px; }
   .shelf h3 a { color: var(--link); font-weight: 500; text-decoration: none; }
+  .shelf h3 small { margin-left: auto; color: var(--soft); font-size: 11px; font-weight: 400; }
   .rows { display: grid; }
   .row { display: grid; grid-template-columns: 28px minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 8px 6px; border-radius: 8px; }
   .row:hover { background: var(--tint); }
+  .file-row { width: 100%; border: 0; background: transparent; text-align: left; }
+  .empty { margin: 8px 6px; color: var(--soft); font-size: 13px; }
   .row .fi { width: 28px; height: 32px; border-radius: 4px; display: grid; place-items: center; font: 700 8.5px var(--mono); color: #fff; }
   .fi.pdf { background: #D6453D; } .fi.key { background: #2F7BD8; } .fi.xls { background: #1F8A4C; } .fi.doc { background: #3D5AFE; } .fi.fig { background: #8E44AD; } .fi.txt { background: #6B7780; }
   .row b { font-weight: 500; display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
   .row small { color: var(--soft); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
   .row .when { color: var(--soft); font-size: 12px; white-space: nowrap; }
   .photos { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; }
+  .photo-tile { position: relative; aspect-ratio: 1; min-width: 0; margin: 0; overflow: hidden; border-radius: 8px; background: var(--tint); }
+  .photo-tile img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .photo-tile figcaption { position: absolute; inset: auto 0 0; padding: 18px 6px 5px; color: #fff; font-size: 10px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; background: linear-gradient(transparent, rgba(0,0,0,.64)); }
+  .photo-result { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 8px; }
+  .empty button { margin-top: 8px; border: 1px solid var(--edge); border-radius: 999px; padding: 6px 12px; background: var(--panel); color: var(--ink); }
+  .empty button:disabled { opacity: .65; cursor: progress; }
+  .skeleton { height: 148px; border-radius: 8px; background: linear-gradient(90deg, var(--tint) 25%, var(--panel) 50%, var(--tint) 75%); background-size: 200% 100%; animation: skeleton-shimmer 1.4s ease-in-out infinite; }
+  @keyframes skeleton-shimmer { to { background-position: -200% 0; } }
   .ph-tile { aspect-ratio: 1; border-radius: 8px; position: relative; overflow: hidden; }
   .ph-tile span { position: absolute; left: 6px; bottom: 5px; font: 500 10px var(--sans); color: #fff; text-shadow: 0 1px 3px rgba(0,0,0,.5); }
   .quick { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }

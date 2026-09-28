@@ -39,6 +39,33 @@ test('product source contains no sample data from the design mock', () => {
   }
 });
 
+test('landing shelves use only local results, permission state, and a dynamic greeting', () => {
+  const page = readFileSync('src/app/page.tsx', 'utf8');
+  const local = readFileSync('src-tauri/src/local.rs', 'utf8');
+  const native = readFileSync('src-tauri/src/lib.rs', 'utf8');
+  const config = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'));
+  assert.match(page, /local_recent_files/);
+  assert.match(page, /local_user_first_name/);
+  assert.match(page, /Good morning/);
+  assert.match(page, /Good afternoon/);
+  assert.match(page, /Good evening/);
+  assert.match(page, /No recent files yet/);
+  assert.match(page, /Loading recent files/);
+  assert.match(page, /local_recent_photos/);
+  assert.match(page, /Choose Pictures folder/);
+  assert.match(page, /convertFileSrc\(photo\.path\)/);
+  assert.doesNotMatch(page, /aria-label="Speak"|Good afternoon, Sami/);
+  assert.match(local, /NSFullUserName/);
+  assert.match(local, /public\.image/);
+  assert.match(local, /request_pictures_access/);
+  assert.match(local, /set_directory\(&pictures\)/);
+  assert.match(local, /canonicalize\(\)/);
+  assert.match(native, /local_user_first_name/);
+  assert.match(native, /tauri_plugin_dialog::init/);
+  assert.equal(config.app.security.assetProtocol.enable, true);
+  assert.deepEqual(config.app.security.assetProtocol.scope, ['$PICTURE/**']);
+});
+
 test('the main window capability permits its draggable title bar', () => {
   const capability = JSON.parse(readFileSync('src-tauri/capabilities/default.json', 'utf8'));
   assert.ok(capability.windows.includes('main'));
