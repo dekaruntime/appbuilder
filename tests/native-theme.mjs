@@ -51,7 +51,7 @@ try {
     const surface = route === '/launcher/' ? '.float-panel' : route === '/' ? '.window' : '.shortcut-page';
     if (route === '/launcher/') {
       const background = await page.locator(surface).evaluate(node => getComputedStyle(node).backgroundColor);
-      assert.match(background, /0\.156863.*0\.156863.*0\.156863.*0\.92/, 'panel uses actual brown background with unchanged transparency');
+      assert.match(background, /0\.156863.*0\.156863.*0\.156863.*0\.97/, 'panel uses actual brown background with the requested 97% opacity');
     }
     await page.evaluate(value => window.themeEvents['native-theme-changed']({payload: value}), purple);
     assert.deepEqual(await snapshot(), {background: purple.background, accent: purple.accent, selection: purple.selection, scheme: 'dark'});
@@ -80,7 +80,7 @@ try {
       });
       const expected = [1, 3, 5].map(offset => parseInt(palette.background.slice(offset, offset + 2), 16));
       expected.forEach((value, index) => assert.ok(Math.abs(pixel[index] - value) <= 2, `${route} ${name}: actual surface ${pixel} must match ${palette.background}`));
-      assert.equal(pixel[3], route === '/launcher/' ? 235 : 255, `${route} ${name}: preserve opacity`);
+      assert.equal(pixel[3], route === '/launcher/' ? 247 : 255, `${route} ${name}: preserve opacity`);
     }
     await page.screenshot({path: `.tmp/native-theme-${route === '/' ? 'main' : route.replaceAll('/', '')}.png`});
     assert.deepEqual(errors, [], `${route} console errors`);
