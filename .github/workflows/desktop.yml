@@ -59,6 +59,9 @@ jobs:
       - run: npm run build:desktop
       # Verify the exported desktop landing screen and native sign-in bridge.
       - run: npm run test:desktop
+      # Catch hydration and runtime errors in a real headless browser load.
+      - run: npx playwright install chromium
+      - run: npm run test:desktop:console
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: '1.96.0'

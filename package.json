@@ -13,6 +13,7 @@
     "build:desktop": "npm run build",
     "check": "tsc --noEmit",
     "test:desktop": "node --test tests/desktop-shell.test.mjs",
+    "test:desktop:console": "node tests/desktop-console.mjs",
     "tauri": "tauri"
   },
   "dependencies": {
@@ -29,6 +30,7 @@
     "@types/node": "^24",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "playwright": "1.63.0",
     "typescript": "^5.9"
   }
 }

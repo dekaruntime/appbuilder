@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "default capability for the desktop shell",
   "windows": ["main", "launcher"],
-  "permissions": ["core:default", "opener:default"]
+  "permissions": ["core:default", "core:window:allow-start-dragging", "opener:default"]
 }
