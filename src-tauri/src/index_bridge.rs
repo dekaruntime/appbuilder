@@ -6,6 +6,8 @@ use tauri_plugin_opener::OpenerExt;
 
 pub struct IndexState {
     service: std::result::Result<Mutex<Service>, String>,
+    #[cfg(target_os = "windows")]
+    icons: Mutex<std::collections::HashMap<String, String>>,
 }
 impl IndexState {
     pub fn start(app: &tauri::AppHandle, actions: &[(String, String)]) -> Self {
@@ -30,12 +32,7 @@ impl IndexState {
                 "/usr/local/share/applications".into(),
             ];
             #[cfg(target_os = "windows")]
-            let apps = vec![
-                home.join("AppData/Roaming/Microsoft/Windows/Start Menu/Programs"),
-                "C:/ProgramData/Microsoft/Windows/Start Menu/Programs".into(),
-                "C:/Program Files".into(),
-                "C:/Program Files (x86)".into(),
-            ];
+            let apps: Vec<std::path::PathBuf> = Vec::new();
             roots.extend(
                 apps.into_iter()
                     .filter(|path| path.is_dir())
@@ -48,9 +45,15 @@ impl IndexState {
                 .join("computer");
             let index = Arc::new(Index::open(&directory)?);
             index.set_actions(actions)?;
+            #[cfg(target_os = "windows")]
+            index.set_registered_apps(&crate::windows_apps::discover()?)?;
             Service::start(index, roots).map(Mutex::new)
         };
-        Self { service: start() }
+        Self {
+            service: start(),
+            #[cfg(target_os = "windows")]
+            icons: Mutex::new(std::collections::HashMap::new()),
+        }
     }
     fn index(&self) -> Result<Arc<Index>, String> {
         Ok(self
@@ -84,7 +87,17 @@ pub fn index_pause(paused: bool, state: State<'_, IndexState>) -> Result<(), Str
     Ok(())
 }
 #[tauri::command]
-pub fn index_rebuild(state: State<'_, IndexState>) -> Result<(), String> {
+pub async fn index_rebuild(state: State<'_, IndexState>) -> Result<(), String> {
+    #[cfg(target_os = "windows")]
+    {
+        let index = state.index()?;
+        tauri::async_runtime::spawn_blocking(move || {
+            index.set_registered_apps(&crate::windows_apps::discover()?)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        state.icons.lock().map_err(|e| e.to_string())?.clear();
+    }
     state
         .service
         .as_ref()
@@ -103,7 +116,51 @@ pub async fn index_open_result(
     let path = tauri::async_runtime::spawn_blocking(move || index.resolve(&key))
         .await
         .map_err(|e| e.to_string())??;
+    #[cfg(target_os = "windows")]
+    if path.starts_with("shell:AppsFolder\\") {
+        return tauri::async_runtime::spawn_blocking(move || crate::windows_apps::open(&path))
+            .await
+            .map_err(|e| e.to_string())?;
+    }
     app.opener()
         .open_path(path, None::<&str>)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn index_result_icon(
+    key: String,
+    state: State<'_, IndexState>,
+) -> Result<Option<String>, String> {
+    #[cfg(target_os = "windows")]
+    {
+        if let Some(icon) = state
+            .icons
+            .lock()
+            .map_err(|e| e.to_string())?
+            .get(&key)
+            .cloned()
+        {
+            return Ok(Some(icon));
+        }
+        let index = state.index()?;
+        let target_key = key.clone();
+        let icon = tauri::async_runtime::spawn_blocking(move || {
+            let path = index.resolve(&target_key)?;
+            crate::windows_apps::icon(&path)
+        })
+        .await
+        .map_err(|e| e.to_string())??;
+        let mut cache = state.icons.lock().map_err(|e| e.to_string())?;
+        if cache.len() >= 256 {
+            cache.clear();
+        }
+        cache.insert(key, icon.clone());
+        Ok(Some(icon))
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let _ = (key, state);
+        Ok(None)
+    }
 }

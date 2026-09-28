@@ -11,6 +11,7 @@ export function resultIcon(row: GraphResult) {
   return row.path.split('.').pop()?.slice(0, 3).toUpperCase() || 'FILE';
 }
 export const resultGroups = ['actions', 'apps', 'files', 'photos'] as const;
+export const resultGroupLabels = { actions: 'Settings', apps: 'Apps', files: 'Files', photos: 'Photos' } as const;
 export function useGraphSearch(query: string) {
   const [results, setResults] = useState<GraphResult[]>([]);
   const [loading, setLoading] = useState(true);
@@ -25,7 +26,12 @@ export function useGraphSearch(query: string) {
         const rows = await invoke<GraphResult[]>('index_search', { query });
         if (alive && request === sequence) { setResults(rows); setError(null); }
       } catch (error) {
-        if (alive && request === sequence) { setResults([]); setError(String(error)); }
+        // Native settings remain useful when the file graph cannot be opened.
+        const panes = await invoke<{ label: string; bundleId: string }[]>('local_settings_panes').catch(() => []);
+        if (alive && request === sequence) {
+          setResults(panes.filter(pane => pane.label.toLowerCase().includes(query.trim().toLowerCase())).map((pane, id) => ({ id, key: pane.bundleId, kind: 'actions', name: pane.label, path: pane.bundleId, offline: false, detail: '' })));
+          setError(String(error));
+        }
       } finally { if (alive && request === sequence) setLoading(false); }
     };
     setLoading(true);

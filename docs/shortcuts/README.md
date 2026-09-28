@@ -1,6 +1,6 @@
 # Search shortcut setup
 
-Default: **Option+Space on macOS; Alt+Space on Windows; Super+Z on Linux**. It is a
+Default: **Option+Space on macOS; Control+Alt+Space on Windows; Super+Z on Linux**. It is a
 starting point, not a promise that every desktop leaves those keys free.
 
 Open **Search shortcut…** in zega's tray menu.
@@ -26,7 +26,7 @@ Registration never marks a test successful. Native delivery must arrive within
 30 seconds, from outside a zega window, and the search window must open. A click
 cannot pass this test. Changing the combination or restarting resets the test.
 The chosen combination persists locally; registration is checked each launch.
-Existing desktop bindings are preserved. On current Omarchy, Save adds a managed
+Windows uses normal global-shortcut registration; zega does not intercept reserved OS shortcuts. On current Omarchy, Save adds a managed
 block for zega to your personal Hyprland bindings and reloads the configuration.
 
 For recovery, launching the executable with `--default-shortcut` opens setup and
@@ -53,8 +53,9 @@ hotkey registration.
 
 ## Windows
 
-Alt+Space may overlap with the window menu or PowerToys Run. Direct registration
-errors are shown in setup. Try **Control+Alt+Space** if the default is occupied.
+Windows shortcuts use normal registration, without a keyboard hook or changes to
+OS bindings. Registration errors are shown in setup so the user can choose a
+combination that is available on their machine. Windows+Z remains Snap Layouts.
 Test with another app focused, including an elevated app if you use one. A
 successful Windows build on another machine is not a substitute for this check.
 

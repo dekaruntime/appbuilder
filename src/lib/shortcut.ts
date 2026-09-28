@@ -15,7 +15,7 @@ export type ShortcutStatus = {
   error: string | null;
   phase: 'idle' | 'waiting' | 'received' | 'confirmed' | 'expired';
 };
-export function bindingLabel(binding: Binding, mac: boolean) {
-  return [binding.control && (mac ? '⌃' : 'Control'), binding.alt && (mac ? '⌥' : 'Alt'), binding.shift && (mac ? '⇧' : 'Shift'), binding.superKey && (mac ? '⌘' : 'Super'), binding.key.replace(/^Key/, '')].filter(Boolean).join(mac ? '' : '+');
+export function bindingLabel(binding: Binding, mac: boolean, windows = false) {
+  return [binding.control && (mac ? '⌃' : 'Control'), binding.alt && (mac ? '⌥' : 'Alt'), binding.shift && (mac ? '⇧' : 'Shift'), binding.superKey && (mac ? '⌘' : windows ? 'Windows' : 'Super'), binding.key.replace(/^Key/, '')].filter(Boolean).join(mac ? '' : '+');
 }
 export { defaults };

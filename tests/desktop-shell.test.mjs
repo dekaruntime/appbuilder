@@ -7,8 +7,8 @@ test('static export opens on the computer graph shell', () => {
   assert.match(html, /aria-label="Graphs"/);
   assert.match(html, /aria-label="computer"/);
   assert.match(html, /zega <span class="v">computer<\/span>/);
-  assert.match(html, /Ask <span class="v">computer<\/span> anything/);
-  assert.match(html, /aria-label="Ask computer anything"/);
+  assert.match(html, /placeholder="Ask computer anything…"/);
+  assert.match(html, /aria-label="Search this computer"/);
   assert.match(html, /src="\/desktop-auth\.js"/);
   assert.match(readFileSync('src/app/page.tsx', 'utf8'), /hour < 12 \? 'Good morning' : hour < 18 \? 'Good afternoon' : 'Good evening'/);
   assert.match(html, /Recent files/);
@@ -106,7 +106,7 @@ test('the menu agent starts without the main window and exposes explicit zega ac
   assert.match(menu, /ActivationPolicy::Regular/);
   assert.match(menu, /"main"\s*=>\s*show_main_window/);
   assert.match(app, /main_window_closed\(window\.app_handle\(\)\)/);
-  assert.match(launcher, /event\.metaKey && event\.key === 'Enter'/);
+  // Keyboard dispatch is exercised by windows-launcher.mjs.
   assert.match(launcher, /openGraphResult\(result\)/);
   const graph = readFileSync('src/lib/index-search.ts', 'utf8');
   assert.match(graph, /invoke\('index_open_result'/);

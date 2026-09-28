@@ -17,6 +17,8 @@ mod shortcut_config;
 mod shortcut_portal;
 mod shortcut_setup;
 mod window_placement;
+#[cfg(target_os = "windows")]
+mod windows_apps;
 
 use account::AccountState;
 use std::sync::Arc;
@@ -49,6 +51,7 @@ pub fn run() {
             index_bridge::index_pause,
             index_bridge::index_rebuild,
             index_bridge::index_open_result,
+            index_bridge::index_result_icon,
             account::account_start,
             account::account_cancel,
             account::account_status,
@@ -90,9 +93,11 @@ pub fn run() {
             }
             let first_launch = shortcut_setup::initialize(app.handle())?;
             let login_launch = std::env::args().any(|arg| arg == "--autostart");
-            let shortcut_launch = cfg!(target_os = "linux") && std::env::args().any(|arg| arg == "--global-shortcut");
+            let shortcut_launch =
+                cfg!(target_os = "linux") && std::env::args().any(|arg| arg == "--global-shortcut");
             if (first_launch || std::env::args().any(|arg| arg == "--shortcut-setup"))
-                && !login_launch && !shortcut_launch
+                && !login_launch
+                && !shortcut_launch
             {
                 shortcut_setup::show_shortcut_setup(app.handle().clone())?;
             }
@@ -113,7 +118,9 @@ pub fn run() {
         .build(tauri::generate_context!())
         .expect("error while building zega desktop")
         .run(|_app, _event| {
-            if matches!(_event, tauri::RunEvent::Exit) { appearance::shutdown(_app); }
+            if matches!(_event, tauri::RunEvent::Exit) {
+                appearance::shutdown(_app);
+            }
             #[cfg(target_os = "macos")]
             if matches!(_event, tauri::RunEvent::Exit) {
                 shortcut::uninstall();

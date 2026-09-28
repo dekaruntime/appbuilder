@@ -58,6 +58,8 @@ impl Binding {
                 .replace("Alt+", "⌥")
                 .replace("Shift+", "⇧")
                 .replace("Super+", "⌘")
+        } else if cfg!(target_os = "windows") {
+            label.replace("Super+", "Windows+")
         } else {
             label
         }
@@ -139,5 +141,10 @@ mod tests {
         let linux = Binding::for_platform("linux");
         assert_eq!(linux.accelerator(), "Super+KeyZ");
         assert!(linux.validate().is_ok());
+        let windows = Binding::for_platform("windows");
+        assert_eq!(windows.accelerator(), "Control+Alt+Space");
+        assert!(windows.validate().is_ok());
+        #[cfg(target_os = "windows")]
+        assert_eq!(windows.label(), "Control+Alt+Space");
     }
 }

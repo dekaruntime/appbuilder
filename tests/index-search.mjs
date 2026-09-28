@@ -2,16 +2,16 @@ import assert from 'node:assert/strict';
 import { spawn, spawnSync } from 'node:child_process';
 import { createServer } from 'node:http';
 import { readFile, stat } from 'node:fs/promises';
-import { resolve, extname } from 'node:path';
+import { resolve, extname, sep } from 'node:path';
 import { createInterface } from 'node:readline';
 import { once } from 'node:events';
 import { chromium } from 'playwright';
 
 const base = resolve(`.tmp/browser-index-${process.pid}`);
 const home = `${base}/home`;
-const fixture = spawnSync('python3', ['scripts/generate-test-home.py', '--root', home], { encoding: 'utf8' });
+const fixture = spawnSync(process.env.PYTHON || (process.platform === 'win32' ? 'python' : 'python3'), ['scripts/generate-test-home.py', '--root', home], { encoding: 'utf8' });
 assert.equal(fixture.status, 0, fixture.stderr);
-const probe = spawn(resolve('.target/debug/examples/index_probe'), [home, `${base}/graph`], { stdio: ['pipe', 'pipe', 'inherit'] });
+const probe = spawn(resolve(`.target/debug/examples/index_probe${process.platform === 'win32' ? '.exe' : ''}`), [home, `${base}/graph`], { stdio: ['pipe', 'pipe', 'inherit'] });
 const waiting = [];
 let ready;
 const readiness = new Promise(resolve => { ready = resolve; });
@@ -27,7 +27,7 @@ const query = (command, args) => new Promise((resolve, reject) => {
 const server = createServer(async (request, response) => {
   try {
     const path = resolve('out', `.${decodeURIComponent(new URL(request.url, 'http://localhost').pathname)}`);
-    assert.ok(path.startsWith(`${resolve('out')}/`) || path === resolve('out'));
+    assert.ok(path.startsWith(`${resolve('out')}${sep}`) || path === resolve('out'));
     const file = (await stat(path)).isDirectory() ? `${path}/index.html` : path;
     response.setHeader('Content-Type', ({ '.html': 'text/html', '.js': 'application/javascript', '.css': 'text/css', '.json': 'application/json', '.woff2': 'font/woff2' })[extname(file)] || 'application/octet-stream');
     response.end(await readFile(file));

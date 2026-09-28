@@ -26,7 +26,7 @@ export default function IndexSettings() {
     catch (error) { setError(String(error)); }
     finally { setBusy(false); }
   };
-  return <details className="index-settings"><summary>Settings</summary><section aria-label="Index settings"><h3>Index</h3>
+  return <section className="index-settings" aria-label="Index settings"><h2>Index</h2>
     <p role="status">{status ? `${status.itemsIndexed.toLocaleString()} items indexed · ${status.paused ? 'Paused' : status.scanning ? 'Scanning' : 'Up to date'} · Last scan: ${status.lastScan ? new Date(status.lastScan * 1000).toLocaleString() : 'Not yet scanned'}` : 'Index status unavailable'}</p>
     {status && status.skipped > 0 && <p>{status.skipped} locations were skipped or could not be read.</p>}
     {status?.warnings?.map(warning => <p key={warning}>{warning}</p>)}
@@ -34,5 +34,5 @@ export default function IndexSettings() {
     <button type="button" disabled={busy || !status} onClick={() => void action('index_pause', { paused: !status?.paused })}>{status?.paused ? 'Resume indexing' : 'Pause indexing'}</button>{' '}
     <button type="button" disabled={busy || !status || status.scanning} onClick={() => void action('index_rebuild')}>Rebuild index</button>
     <small>Place names: <a href="https://www.geonames.org/" target="_blank" rel="noreferrer">GeoNames</a>, <a href="https://creativecommons.org/licenses/by/4.0/" target="_blank" rel="noreferrer">CC BY 4.0</a>. City data reduced from cities15000; neighbourhood entries omitted. Nearest city within 100 km.</small>
-  </section></details>;
+  </section>;
 }

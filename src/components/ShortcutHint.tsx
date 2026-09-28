@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { ShortcutStatus, defaults, bindingLabel } from '../lib/shortcut';
+import ShortcutLabel from './ShortcutLabel';
 
 export default function ShortcutHint() {
   const [label, setLabel] = useState(bindingLabel(defaults, false));
@@ -17,5 +18,5 @@ export default function ShortcutHint() {
     void invoke<ShortcutStatus>('shortcut_status').then(update).catch(() => setLabel('Set shortcut'));
     return () => { disposed = true; void stop.then(unlisten => unlisten()); };
   }, []);
-  return <button type="button" className="kbd" aria-label="Set up search shortcut" onMouseDown={event => event.stopPropagation()} onClick={() => { if (isTauri()) void invoke('show_shortcut_setup'); else window.location.href = '/shortcut/'; }}>{label}</button>;
+  return <button type="button" className="kbd" aria-label="Set up search shortcut" onMouseDown={event => event.stopPropagation()} onClick={() => { if (isTauri()) void invoke('show_shortcut_setup'); else window.location.href = '/shortcut/'; }}><ShortcutLabel label={label} /></button>;
 }
