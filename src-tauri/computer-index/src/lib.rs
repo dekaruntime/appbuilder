@@ -23,6 +23,7 @@ use zega::Zega;
 pub const SCHEMA: &str = include_str!("../schema.zql");
 pub type Result<T> = std::result::Result<T, String>;
 const KINDS: [&str; 5] = ["File", "Folder", "App", "Photo", "Video"];
+const REGISTERED_APP: &str = "registered-app:";
 
 #[derive(Clone, Default, Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -265,6 +266,9 @@ impl Index {
                 return Err("This volume is offline".into());
             }
             let path = row["path"].as_str().ok_or("Missing indexed path")?;
+            if kind == "App" && key == format!("{REGISTERED_APP}{path}") {
+                return Ok(path.to_owned());
+            }
             let (current, _) =
                 crawler::record(Path::new(path), kind == "App").map_err(|e| e.to_string())?;
             if current.key != key {
@@ -276,6 +280,48 @@ impl Index {
     }
     pub fn records(&self) -> Vec<Record> {
         self.catalog.lock().unwrap().values().cloned().collect()
+    }
+
+    /// Synchronize launch entries supplied by the native OS app catalogue.
+    /// These are registered apps, not filesystem executables discovered by crawling.
+    pub fn set_registered_apps(&self, apps: &[(String, String)]) -> Result<()> {
+        let _scan = self.scan_gate.lock().unwrap();
+        let mut catalog = self.catalog.lock().unwrap();
+        let mut seen = HashSet::new();
+        for (name, target) in apps {
+            let key = format!("{REGISTERED_APP}{target}");
+            let record = Record {
+                key: key.clone(),
+                name: name.clone(),
+                path: target.clone(),
+                volume: "Registered applications".into(),
+                file_id: target.clone(),
+                fingerprint: target.clone(),
+                size: 0,
+                mtime: 0,
+                offline: false,
+                kind: "App".into(),
+            };
+            self.upsert(&record, &Media::default(), None, catalog.get(&key))?;
+            catalog.insert(key.clone(), record);
+            seen.insert(key);
+        }
+        let removed: Vec<_> = catalog
+            .keys()
+            .filter(|key| key.starts_with(REGISTERED_APP) && !seen.contains(*key))
+            .cloned()
+            .collect();
+        for key in removed {
+            self.write(&format!(
+                "mutation {{ delete App(key = {}) {{ @detach }} }}",
+                quote(&key)
+            ))?;
+            catalog.remove(&key);
+        }
+        self.flush()?;
+        drop(catalog);
+        self.refresh_vocabulary();
+        Ok(())
     }
     pub fn node_id(&self, kind: &str, key: &str) -> Result<u64> {
         if !KINDS.contains(&kind) {
@@ -331,6 +377,11 @@ impl Index {
         parent: Option<&Record>,
         old: Option<&Record>,
     ) -> Result<()> {
+        let searchable = if r.key.starts_with(REGISTERED_APP) {
+            r.name.to_lowercase()
+        } else {
+            format!("{} {}", r.name, r.path).to_lowercase()
+        };
         self.dimension(
             "Volume",
             &r.volume,
@@ -342,10 +393,11 @@ impl Index {
             quote(&r.path),
             r.size,
             r.mtime,
-            quote(&format!("{} {}", r.name, r.path).to_lowercase())
+            quote(&searchable)
         );
         if let Some(old) = old {
             if old.path == r.path
+                && old.name == r.name
                 && old.mtime == r.mtime
                 && !old.offline
                 && !self.needs_repair.load(Ordering::Relaxed)
@@ -371,7 +423,7 @@ impl Index {
                     quote(&r.path),
                     r.size,
                     r.mtime,
-                    quote(&format!("{} {}", r.name, r.path).to_lowercase())
+                    quote(&searchable)
                 )
             ))?;
         }
@@ -601,6 +653,37 @@ impl Index {
     }
     fn scan(&self, roots: &[Root], present: impl Fn(&Record) -> bool) -> Result<()> {
         let mut catalog = self.catalog.lock().unwrap();
+        // Apply scope changes before crawling: old app roots must stop appearing
+        // even when scanning the user's home takes a while.
+        let out_of_scope: Vec<_> = catalog
+            .values()
+            .filter(|r| {
+                !r.offline
+                    && !r.key.starts_with(REGISTERED_APP)
+                    && !roots
+                        .iter()
+                        .any(|root| Path::new(&r.path).starts_with(&root.path))
+                    && present(r)
+            })
+            .cloned()
+            .collect();
+        for kind in KINDS {
+            let records: Vec<_> = out_of_scope.iter().filter(|r| r.kind == kind).collect();
+            for batch in records.chunks(96) {
+                let condition = batch
+                    .iter()
+                    .map(|r| format!("key = {}", quote(&r.key)))
+                    .collect::<Vec<_>>()
+                    .join(" || ");
+                self.write(&format!(
+                    "mutation {{ delete {kind}({condition}) {{ @detach }} }}"
+                ))?;
+                for record in batch {
+                    catalog.remove(&record.key);
+                }
+            }
+        }
+        self.flush()?;
         let by_path: HashMap<_, _> = catalog
             .values()
             .map(|r| (r.path.clone(), r.clone()))
@@ -688,7 +771,7 @@ impl Index {
         }
         let missing: Vec<_> = catalog
             .values()
-            .filter(|r| !seen.contains(&r.key))
+            .filter(|r| !seen.contains(&r.key) && !r.key.starts_with(REGISTERED_APP))
             .cloned()
             .collect();
         for r in missing {
@@ -732,12 +815,21 @@ impl Index {
     pub fn rebuild(&self, roots: &[Root]) -> Result<()> {
         // Re-extract online files. Preserve metadata for disconnected drives.
         let mut catalog = self.catalog.lock().unwrap();
+        let registered: Vec<_> = catalog
+            .values()
+            .filter(|r| r.key.starts_with(REGISTERED_APP))
+            .cloned()
+            .collect();
         for kind in KINDS {
             self.write(&format!(
                 "mutation {{ delete {kind}(offline = false) {{ @detach }} }}"
             ))?;
         }
         catalog.retain(|_, r| r.offline);
+        for record in registered {
+            self.upsert(&record, &Media::default(), None, None)?;
+            catalog.insert(record.key.clone(), record);
+        }
         drop(catalog);
         self.reconcile(roots)?;
         self.checkpoint()

@@ -1,5 +1,7 @@
+#[cfg(any(not(target_os = "windows"), test))]
 use plist::Value;
 use serde::Serialize;
+#[cfg(any(not(target_os = "windows"), test))]
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader};
@@ -8,6 +10,10 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, SystemTime};
 use tauri::{Manager, State};
+
+#[cfg(target_os = "windows")]
+#[path = "windows_settings.rs"]
+mod windows_settings;
 
 const SPOTLIGHT_QUERY: &str = "kMDItemContentModificationDate >= $time.now(-604800) && kMDItemContentTypeTree == \"public.data\"";
 const PHOTO_SPOTLIGHT_QUERY: &str = "kMDItemContentModificationDate >= $time.now(-604800) && kMDItemContentTypeTree == \"public.image\"";
@@ -72,6 +78,12 @@ impl SettingsIndex {
             .collect()
     }
 
+    #[cfg(target_os = "windows")]
+    pub fn discover() -> Self {
+        Self(windows_settings::discover())
+    }
+
+    #[cfg(not(target_os = "windows"))]
     pub fn discover() -> Self {
         let roots = [
             PathBuf::from("/System/Library/ExtensionKit/Extensions"),
@@ -366,18 +378,27 @@ pub fn open_settings_pane(
         .iter()
         .find(|pane| pane.bundle_id == bundle_id)
         .ok_or_else(|| "The selected System Settings pane is not installed".to_owned())?;
-    let url = settings_url(&pane.bundle_id);
-    Command::new("/usr/bin/open")
-        .arg(url)
-        .spawn()
-        .map(|_| ())
-        .map_err(|error| format!("System Settings could not open the selected pane: {error}"))
+    #[cfg(target_os = "windows")]
+    {
+        windows_settings::open(pane)
+    }
+    #[cfg(not(target_os = "windows"))]
+    {
+        let url = settings_url(&pane.bundle_id);
+        Command::new("/usr/bin/open")
+            .arg(url)
+            .spawn()
+            .map(|_| ())
+            .map_err(|error| format!("System Settings could not open the selected pane: {error}"))
+    }
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn settings_url(bundle_id: &str) -> String {
     format!("x-apple.systempreferences:{bundle_id}")
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn discover_in(roots: &[PathBuf]) -> Vec<SettingsPane> {
     let mut panes = Vec::new();
     for root in roots {
@@ -427,6 +448,7 @@ fn discover_in(roots: &[PathBuf]) -> Vec<SettingsPane> {
     panes
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn is_settings_bundle_id(bundle_id: &str) -> bool {
     bundle_id.starts_with("com.apple.")
         && (bundle_id.ends_with("-Settings.extension")
@@ -434,6 +456,7 @@ fn is_settings_bundle_id(bundle_id: &str) -> bool {
             || bundle_id.starts_with("com.apple.preferences."))
 }
 
+#[cfg(any(not(target_os = "windows"), test))]
 fn settings_label(name: &str, bundle_id: &str) -> Option<(&'static str, &'static str)> {
     let identity = format!("{name} {bundle_id}").to_ascii_lowercase();
     if identity.contains("appearance") || identity.contains("general") {
@@ -509,7 +532,10 @@ mod tests {
         File::create(&expired).expect("create expired fixture");
         let now = SystemTime::now();
         let old = now - Duration::from_secs(8 * 24 * 60 * 60);
-        File::open(&expired)
+        // Windows requires a writable handle to change file timestamps.
+        File::options()
+            .write(true)
+            .open(&expired)
             .expect("open expired fixture")
             .set_times(FileTimes::new().set_modified(old))
             .expect("set expired timestamp");
@@ -575,6 +601,27 @@ mod tests {
             "x-apple.systempreferences:com.apple.LocalNetworkSettings-Settings.extension"
         );
         fs::remove_dir_all(root).expect("remove in-repo settings fixture");
+    }
+
+    #[cfg(target_os = "windows")]
+    #[test]
+    fn windows_settings_index_exposes_native_settings_targets() {
+        let index = super::SettingsIndex::discover();
+        for (label, uri) in [
+            ("Dark mode", "ms-settings:colors"),
+            ("Keyboard", "ms-settings:easeofaccess-keyboard"),
+            ("Sound", "ms-settings:sound"),
+            ("Displays", "ms-settings:display"),
+            ("Network", "ms-settings:network-status"),
+        ] {
+            assert!(
+                index
+                    .0
+                    .iter()
+                    .any(|pane| pane.label == label && pane.bundle_id == uri),
+                "Windows settings must include {label}: {uri}"
+            );
+        }
     }
 
     #[cfg(target_os = "macos")]

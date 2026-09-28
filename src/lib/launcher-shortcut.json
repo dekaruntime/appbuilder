@@ -1,5 +1,5 @@
 {
   "macos": {"key":"Space","alt":true,"control":false,"shift":false,"superKey":false},
-  "windows": {"key":"Space","alt":true,"control":false,"shift":false,"superKey":false},
+  "windows": {"key":"Space","alt":true,"control":true,"shift":false,"superKey":false},
   "linux": {"key":"KeyZ","alt":false,"control":false,"shift":false,"superKey":true}
 }

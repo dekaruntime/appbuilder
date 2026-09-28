@@ -227,13 +227,20 @@ mod tests {
         if home.exists() {
             std::fs::remove_dir_all(&home).unwrap();
         }
-        let generated = std::process::Command::new("python3")
+        mod support {
+            include!(concat!(env!("CARGO_MANIFEST_DIR"), "/tests/support/mod.rs"));
+        }
+        let generated = std::process::Command::new(support::python())
             .arg(repo.join("scripts/generate-test-home.py"))
             .arg("--root")
             .arg(&home)
             .output()
             .unwrap();
-        assert!(generated.status.success());
+        assert!(
+            generated.status.success(),
+            "{}",
+            String::from_utf8_lossy(&generated.stderr)
+        );
         let image = photo(&home.join("Pictures/IMG_0000.png"));
         assert_eq!(image.captured.as_deref(), Some("2026-07-15T12:30:00"));
         assert_eq!(image.camera.as_deref(), Some("Fixture Camera"));

@@ -5,7 +5,9 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
-import { useGraphSearch, openGraphResult, GraphResult, resultGroups, resultIcon } from '../../lib/index-search';
+import { useGraphSearch, openGraphResult, GraphResult, resultGroups, resultGroupLabels } from '../../lib/index-search';
+import ResultIcon from '../../components/ResultIcon';
+import SearchBar from '../../components/SearchBar';
 
 export default function FloatingSearch() {
   const [query, setQuery] = useState('');
@@ -14,6 +16,7 @@ export default function FloatingSearch() {
   const [active, setActive] = useState(0);
   const [visible, setVisible] = useState(true);
   const [nativeMaterial, setNativeMaterial] = useState(false);
+  const [windows, setWindows] = useState(false);
   const [squareCorners, setSquareCorners] = useState(false);
   const input = useRef<HTMLInputElement>(null);
 
@@ -21,7 +24,7 @@ export default function FloatingSearch() {
     input.current?.focus();
     if (!isTauri()) return;
     void invoke<{platform: string; squareCorners: boolean}>('shortcut_status')
-      .then(status => { setNativeMaterial(status.platform === 'macos'); setSquareCorners(status.squareCorners); })
+      .then(status => { setNativeMaterial(status.platform === 'macos'); setWindows(status.platform === 'windows'); setSquareCorners(status.squareCorners); })
       .catch(() => setNativeMaterial(false));
     let unlisten: (() => void) | undefined;
     void listen('launcher-opened', () => {
@@ -63,7 +66,7 @@ export default function FloatingSearch() {
   const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
     if (event.key === 'ArrowDown' && results.length) { event.preventDefault(); setActive(index => (index + 1) % results.length); }
     if (event.key === 'ArrowUp' && results.length) { event.preventDefault(); setActive(index => (index - 1 + results.length) % results.length); }
-    if (event.metaKey && event.key === 'Enter') { event.preventDefault(); void openZega(); return; }
+    if ((windows ? event.ctrlKey : event.metaKey) && event.key === 'Enter') { event.preventDefault(); void openZega(); return; }
     if (event.key === 'Enter' && results[active]) { event.preventDefault(); void open(results[active]); }
   };
 
@@ -75,8 +78,8 @@ export default function FloatingSearch() {
       resultIndex += 1;
       const index = resultIndex;
       return <button key={result.key} disabled={result.offline} className={`lrow ${index === active ? 'sel' : ''}`} type="button" role="option" aria-selected={index === active} onMouseEnter={() => setActive(index)} onClick={() => void open(result)}>
-        <span className={result.kind === 'actions' ? 'gear' : 'fi txt'}>{resultIcon(result)}</span>
-        <span><b>{result.name}</b><small>{result.offline ? 'Offline · ' : ''}{result.path}</small></span>
+        <ResultIcon result={result} />
+        <span><b>{result.name}</b><small>{result.offline ? 'Offline · ' : ''}{result.path.startsWith('shell:AppsFolder\\') ? 'Application' : result.path}</small></span>
         <span className="hint">↵</span>
       </button>;
     })}
@@ -89,11 +92,9 @@ export default function FloatingSearch() {
         void getCurrentWindow().startDragging().catch(error => console.error('Could not move search window', error));
       }
     }}><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span></header>
-    <form className="search float-search" role="search" onSubmit={event => { event.preventDefault(); if (results[active]) void open(results[active]); }}>
-      <input ref={input} aria-label="Search this Mac" autoComplete="off" spellCheck={false} placeholder="Ask computer anything…" value={query} onChange={event => { setQuery(event.target.value); setActive(0); }} onKeyDown={onKeyDown}/>
-    </form>
+    <SearchBar className="float-search" inputRef={input} label={windows ? 'Search this computer' : 'Search this Mac'} value={query} onChange={value => { setQuery(value); setActive(0); }} onSubmit={() => { if (results[active]) void open(results[active]); }} onKeyDown={onKeyDown} />
     <div className="lres" role="listbox" aria-label="Local results">
-      {resultGroups.map(group => <div key={group}>{renderGroup(group[0].toUpperCase() + group.slice(1), results.filter(row => row.kind === group))}</div>)}
+      {resultGroups.map(group => <div key={group}>{renderGroup(resultGroupLabels[group], results.filter(row => row.kind === group))}</div>)}
       {(error || openError) && <p role="alert">{error || openError}</p>}
       {loading ? <div className="skeleton" aria-label="Loading local results" /> : !results.length && <p className="float-empty">No local matches.</p>}
     </div>

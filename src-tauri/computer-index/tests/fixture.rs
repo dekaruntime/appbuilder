@@ -1,4 +1,5 @@
 use chrono::NaiveDate;
+mod support;
 use computer_index::{Index, Root, Service};
 use std::{
     fs,
@@ -19,7 +20,7 @@ fn fixture(name: &str) -> (PathBuf, Vec<Root>) {
     }
     fs::create_dir_all(&base).unwrap();
     let home = base.join("home");
-    let output = Command::new("python3")
+    let output = Command::new(support::python())
         .arg(repo.join("scripts/generate-test-home.py"))
         .arg("--root")
         .arg(&home)
@@ -244,6 +245,67 @@ fn rename_preserves_engine_identity() {
         "rename must preserve the stored engine node"
     );
     assert!(index.search("original").unwrap().is_empty());
+}
+
+#[test]
+fn changing_index_roots_removes_old_results_without_deleting_files() {
+    let (home, root, index) = small("scope-change");
+    for number in 0..110 {
+        fs::write(
+            home.join(format!("obsolete-{number}.txt")),
+            "outside the new roots",
+        )
+        .unwrap();
+    }
+    index.reconcile(std::slice::from_ref(&root)).unwrap();
+    assert!(!index.search("original").unwrap().is_empty());
+    index
+        .reconcile(&[Root {
+            path: root.path.join("folder"),
+            apps: false,
+        }])
+        .unwrap();
+    assert!(
+        index.search("original").unwrap().is_empty(),
+        "removed app roots must not leave stale search results"
+    );
+    assert!(
+        home.join("original.txt").exists(),
+        "changing index scope must only remove metadata"
+    );
+    assert!(
+        index.search("obsolete").unwrap().is_empty(),
+        "every cleanup batch must be removed"
+    );
+    assert!(home.join("obsolete-109.txt").exists());
+}
+
+#[test]
+fn registered_apps_index_names_survive_scans_and_remove_uninstalled_entries() {
+    let (_, root, index) = small("registered-apps");
+    let target = "shell:AppsFolder\\Vendor.InternalHelper.exe!App".to_owned();
+    index
+        .set_registered_apps(&[("Friendly Calculator".into(), target.clone())])
+        .unwrap();
+    index.reconcile(std::slice::from_ref(&root)).unwrap();
+    let results = index.search("Friendly Calculator").unwrap();
+    assert_eq!(results.len(), 1);
+    assert_eq!(results[0].kind, "apps");
+    assert_eq!(index.resolve(&results[0].key).unwrap(), target);
+    assert!(
+        index.search("InternalHelper").unwrap().is_empty(),
+        "internal shell IDs must not pollute display-name search"
+    );
+    index
+        .set_registered_apps(&[("Renamed Calculator".into(), target.clone())])
+        .unwrap();
+    assert_eq!(index.search("Renamed Calculator").unwrap().len(), 1);
+    assert!(index.search("Friendly").unwrap().is_empty());
+    index.rebuild(std::slice::from_ref(&root)).unwrap();
+    assert_eq!(index.search("Renamed Calculator").unwrap().len(), 1);
+    index.set_registered_apps(&[]).unwrap();
+    assert!(index.search("Calculator").unwrap().is_empty());
+    assert!(index.resolve(&results[0].key).is_err());
 }
 
 #[test]
