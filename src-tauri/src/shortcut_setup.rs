@@ -184,7 +184,7 @@ fn install(app: &AppHandle, binding: &Binding) -> Result<(), String> {
 fn install(app: &AppHandle, binding: &Binding) -> Result<(), String> {
     use tauri_plugin_global_shortcut::{GlobalShortcutExt, ShortcutState};
     if uses_portal() {
-        return Err("Choose Save & check availability to request a shortcut from your desktop. Approve the desktop prompt, then run the keypress test.".into());
+        return Err("Choose Save & test to request your desktop shortcut.".into());
     }
     if app
         .try_state::<tauri_plugin_global_shortcut::GlobalShortcut<tauri::Wry>>()
@@ -248,44 +248,70 @@ pub async fn shortcut_apply(app: AppHandle, binding: Binding) -> Result<Status, 
             .portal;
         if is_portal {
             #[cfg(target_os = "linux")]
-            crate::desktop_identity::prepare(&app)?;
-            let state = app.state::<PortalState>();
-            let mut current = state.0.lock().await;
-            if let Some(previous) = current.take() {
-                previous.close().await;
-            }
-            let handle = app.clone();
-            let result = crate::shortcut_portal::register(
-                &app.config().identifier,
-                &binding,
-                move |event| {
-                    let app = handle.clone();
-                    let _ = handle.run_on_main_thread(move || match event {
-                        crate::shortcut_portal::Event::Activated => activated(&app),
-                        crate::shortcut_portal::Event::Changed(label) => {
-                            portal_changed(&app, Some(label))
-                        }
-                        crate::shortcut_portal::Event::Closed => portal_changed(&app, None),
-                    });
-                },
-            )
-            .await;
-            #[allow(clippy::bind_instead_of_map)]
-            // Linux configuration can fail inside this closure.
-            let configured = result.and_then(|registration| {
+            let gnome = crate::gnome_shortcut::available().await;
+            #[cfg(not(target_os = "linux"))]
+            let gnome = Ok::<bool, String>(false);
+            if !matches!(gnome, Ok(false)) {
                 #[cfg(target_os = "linux")]
-                let label = crate::hyprland::configure(
-                    &app.path().config_dir().map_err(|e| e.to_string())?,
-                    &binding,
-                    &app.config().identifier,
-                )?
-                .unwrap_or_else(|| registration.label.clone());
+                let result = match gnome {
+                    Ok(true) => {
+                        let binding = binding.clone();
+                        tauri::async_runtime::spawn_blocking(move || {
+                            crate::gnome_shortcut::install(
+                                &binding,
+                                &std::env::current_exe().map_err(|e| e.to_string())?,
+                            )
+                        })
+                        .await
+                        .map_err(|e| e.to_string())?
+                    }
+                    Err(error) => Err(error),
+                    Ok(false) => unreachable!(),
+                };
                 #[cfg(not(target_os = "linux"))]
-                let label = registration.label.clone();
-                *current = Some(registration);
-                Ok(label)
-            });
-            Some(configured)
+                let result = Err("GNOME shortcuts are unavailable on this host.".into());
+                Some(result)
+            } else {
+                #[cfg(target_os = "linux")]
+                crate::desktop_identity::prepare(&app)?;
+                let state = app.state::<PortalState>();
+                let mut current = state.0.lock().await;
+                if let Some(previous) = current.take() {
+                    previous.close().await;
+                }
+                let handle = app.clone();
+                let result = crate::shortcut_portal::register(
+                    &app.config().identifier,
+                    &binding,
+                    move |event| {
+                        let app = handle.clone();
+                        let _ = handle.run_on_main_thread(move || match event {
+                            crate::shortcut_portal::Event::Activated => activated(&app),
+                            crate::shortcut_portal::Event::Changed(label) => {
+                                portal_changed(&app, Some(label))
+                            }
+                            crate::shortcut_portal::Event::Closed => portal_changed(&app, None),
+                        });
+                    },
+                )
+                .await;
+                #[allow(clippy::bind_instead_of_map)]
+                // Linux configuration can fail inside this closure.
+                let configured = result.and_then(|registration| {
+                    #[cfg(target_os = "linux")]
+                    let label = crate::hyprland::configure(
+                        &app.path().config_dir().map_err(|e| e.to_string())?,
+                        &binding,
+                        &app.config().identifier,
+                    )?
+                    .unwrap_or_else(|| registration.label.clone());
+                    #[cfg(not(target_os = "linux"))]
+                    let label = registration.label.clone();
+                    *current = Some(registration);
+                    Ok(label)
+                });
+                Some(configured)
+            }
         } else {
             None
         }
@@ -405,14 +431,23 @@ pub fn activated(app: &AppHandle) {
 }
 
 #[tauri::command]
+pub fn close_shortcut_setup(app: AppHandle) -> Result<(), String> {
+    if let Some(window) = app.get_webview_window("shortcut-setup") {
+        window.hide().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
 pub fn show_shortcut_setup(app: AppHandle) -> Result<(), String> {
     let window = match app.get_webview_window("shortcut-setup") {
         Some(window) => window,
         None => {
             WebviewWindowBuilder::new(&app, "shortcut-setup", WebviewUrl::App("shortcut/".into()))
                 .title("zega · Search shortcut")
-                .inner_size(620.0, 720.0)
-                .min_inner_size(480.0, 560.0)
+                .inner_size(520.0, 440.0)
+                .min_inner_size(480.0, 400.0)
+                .resizable(true)
                 .visible(false)
                 .build()
                 .map_err(|e| e.to_string())?

@@ -8,11 +8,19 @@ search. The setup is bundled, works offline, and does not send computer data
 anywhere. It opens on first launch and when registration fails. `--autostart`
 keeps the main window and setup hidden at login.
 
-1. Click **Use default** to save and apply the platform default in one step, or
-   choose a custom combination and **Save & check availability**.
-2. **Start keypress test**, focus a different application, and press the keys.
-3. Without clicking, type a few letters. Return to setup and confirm that **only
-   zega search** appeared and received the typing.
+1. Click **Test shortcut**, or **Save & test** on first setup.
+2. Focus a different application and press the displayed keys within 30 seconds.
+3. Type without clicking. Return to setup, choose **Yes, it worked** only if zega
+   alone opened and received the typing, then **Done**.
+
+Click the displayed combination to record new keys, or **Change** to choose
+modifiers and a key without triggering an occupied shortcut. **Use default**
+saves the platform default immediately. **Help** opens a separate view for the
+current platform. **Open search** always provides a click fallback.
+
+The default setup window is 520×440 and can be resized down to 480×400. The
+normal, error, edit, help, waiting, received, and confirmed views are checked at
+that minimum size: every button remains visible without scrolling.
 
 Registration never marks a test successful. Native delivery must arrive within
 30 seconds, from outside a zega window, and the search window must open. A click
@@ -51,6 +59,21 @@ Test with another app focused, including an elevated app if you use one. A
 successful Windows build on another machine is not a substitute for this check.
 
 ## Linux / Omarchy
+
+On Ubuntu / GNOME releases without the GlobalShortcuts portal (including the
+tested GNOME 46 desktop), **Save** creates a `zega Search` custom shortcut in
+GNOME Keyboard Settings. It checks system, extension keybinding schemas, and
+existing custom shortcuts first. It preserves other entries and refuses an
+entry belonging to a different zega installation. Changing the keys in zega
+updates that same entry. The command opens search directly, including when the
+agent is stopped; it does not open the main window.
+
+GNOME's desktop command reaches the same native delivery and user-confirmation
+checks as other platforms. A saved setting is not proof of delivery or focus:
+run the outside-app test. If another application intercepts the keys, choose a
+different combination. To remove the persistent desktop shortcut after
+uninstalling zega, remove `zega Search` in Settings → Keyboard → View and
+Customize Shortcuts → Custom Shortcuts.
 
 Native Wayland uses the **XDG GlobalShortcuts portal**. Save requests desktop
 approval; cancellation, unavailable portals, and permission expiry are reported.

@@ -2,6 +2,8 @@ mod account;
 mod appearance;
 #[cfg(target_os = "linux")]
 mod desktop_identity;
+#[cfg(target_os = "linux")]
+mod gnome_shortcut;
 #[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
 mod hyprland;
 mod local;
@@ -22,6 +24,11 @@ use tauri::Manager;
 pub fn run() {
     let builder = tauri::Builder::default()
         .plugin(tauri_plugin_single_instance::init(|app, args, _| {
+            #[cfg(target_os = "linux")]
+            if args.iter().any(|arg| arg == "--global-shortcut") {
+                shortcut_setup::activated(app);
+                return;
+            }
             if args.iter().any(|arg| arg == "--default-shortcut") {
                 shortcut_setup::apply_default(app.clone());
             } else if args.iter().any(|arg| arg == "--shortcut-setup") {
@@ -54,6 +61,7 @@ pub fn run() {
             shortcut_setup::shortcut_apply,
             shortcut_setup::shortcut_begin_test,
             shortcut_setup::shortcut_confirm,
+            shortcut_setup::close_shortcut_setup,
             shortcut_setup::show_shortcut_setup,
         ])
         .setup(|app| {
@@ -70,12 +78,13 @@ pub fn run() {
             }
             let first_launch = shortcut_setup::initialize(app.handle())?;
             let login_launch = std::env::args().any(|arg| arg == "--autostart");
+            let shortcut_launch = cfg!(target_os = "linux") && std::env::args().any(|arg| arg == "--global-shortcut");
             if (first_launch || std::env::args().any(|arg| arg == "--shortcut-setup"))
-                && !login_launch
+                && !login_launch && !shortcut_launch
             {
                 shortcut_setup::show_shortcut_setup(app.handle().clone())?;
             }
-            if std::env::args().any(|arg| arg == "--search") && !login_launch {
+            if (std::env::args().any(|arg| arg == "--search") || shortcut_launch) && !login_launch {
                 menu::open_search_window(app.handle().clone())?;
             }
             Ok(())
