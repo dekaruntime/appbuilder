@@ -142,7 +142,7 @@ fn local_volume(path: &Path) -> io::Result<bool> {
         // SAFETY: root is a NUL-terminated UTF-16 drive root.
         Ok(
             unsafe { windows_sys::Win32::Storage::FileSystem::GetDriveTypeW(root.as_ptr()) }
-                != windows_sys::Win32::Storage::FileSystem::DRIVE_REMOTE,
+                != windows_sys::Win32::System::WindowsProgramming::DRIVE_REMOTE,
         )
     }
 }

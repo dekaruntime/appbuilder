@@ -8,7 +8,11 @@ export default function IndexSettings() {
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const refresh = async () => {
-    try { setStatus(await invoke<IndexStatus>('index_status')); setError(null); }
+    try {
+      const next = await invoke<IndexStatus>('index_status');
+      if (typeof next?.itemsIndexed !== 'number' || typeof next?.scanning !== 'boolean' || typeof next?.paused !== 'boolean') throw new Error('Index status unavailable');
+      setStatus(next); setError(null);
+    }
     catch (error) { setError(String(error)); }
   };
   useEffect(() => {

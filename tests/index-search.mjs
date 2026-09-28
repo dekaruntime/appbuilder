@@ -43,7 +43,7 @@ try {
   const calls = [];
   const errors = [];
   const setup = async path => {
-    const page = await browser.newPage({ viewport: { width: 1200, height: 900 } });
+    const page = await browser.newPage({ viewport: path === '/launcher/' ? { width: 680, height: 440 } : { width: 1200, height: 900 } });
     page.on('pageerror', error => errors.push(error.message));
     await page.exposeBinding('fixtureInvoke', async (_, command, args) => {
       calls.push({ command, args });

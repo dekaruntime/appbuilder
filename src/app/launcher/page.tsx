@@ -5,7 +5,7 @@ import { invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
-import { useGraphSearch, openGraphResult, GraphResult, resultGroups } from '../../lib/index-search';
+import { useGraphSearch, openGraphResult, GraphResult, resultGroups, resultIcon } from '../../lib/index-search';
 
 export default function FloatingSearch() {
   const [query, setQuery] = useState('');
@@ -75,7 +75,7 @@ export default function FloatingSearch() {
       resultIndex += 1;
       const index = resultIndex;
       return <button key={result.key} disabled={result.offline} className={`lrow ${index === active ? 'sel' : ''}`} type="button" role="option" aria-selected={index === active} onMouseEnter={() => setActive(index)} onClick={() => void open(result)}>
-        <span className={result.kind === 'actions' ? 'gear' : 'fi txt'}>{result.kind === 'photos' ? '▧' : result.kind === 'apps' ? '▣' : result.kind === 'actions' ? '⚙' : '▤'}</span>
+        <span className={result.kind === 'actions' ? 'gear' : 'fi txt'}>{resultIcon(result)}</span>
         <span><b>{result.name}</b><small>{result.offline ? 'Offline · ' : ''}{result.path}</small></span>
         <span className="hint">↵</span>
       </button>;

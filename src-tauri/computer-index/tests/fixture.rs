@@ -142,6 +142,7 @@ fn fixture_counts_relationships_identity_offline_and_latency() {
     let mut timings = Vec::new();
     for _ in 0..10 {
         for query in [
+            "",
             "l",
             "li",
             "lis",
