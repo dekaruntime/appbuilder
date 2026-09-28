@@ -253,3 +253,6 @@ html:has(.float-root), body:has(.float-root) { overflow: hidden; background: tra
 .shortcut-manual label { display: flex; align-items: center; gap: 3px; }
 .shortcut-manual .shortcut-actions { align-items: center; margin: 0 0 8px; }
 .shortcut-manual select { font: inherit; color: var(--ink); background: var(--panel); border: 1px solid var(--edge); border-radius: 5px; padding: 4px; }
+
+.index-settings{margin-top:24px;color:var(--muted);font-size:13px}.index-settings summary{cursor:pointer}.index-settings section{padding:12px 0}.index-settings h3{margin:8px 0}.index-settings button{padding:7px 12px;border:1px solid currentColor;border-radius:6px;background:transparent;color:inherit;cursor:pointer}.index-settings small{display:block;margin-top:10px}.row:disabled,.lrow:disabled{opacity:.55;cursor:default}
+.photo-result-button{display:flex;flex-direction:column;gap:6px;min-width:0;border:0;border-radius:8px;background:transparent;color:inherit;text-align:left;cursor:pointer}.photo-result-button>span{overflow:hidden;text-overflow:ellipsis;max-width:100%}.photo-result-button>span[aria-hidden]{font-size:44px;align-self:center}.photo-result-button:disabled{opacity:.55;cursor:default}

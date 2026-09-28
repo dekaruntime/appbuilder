@@ -44,14 +44,14 @@ test('landing shelves use only local results, permission state, and a dynamic gr
   const local = readFileSync('src-tauri/src/local.rs', 'utf8');
   const native = readFileSync('src-tauri/src/lib.rs', 'utf8');
   const config = JSON.parse(readFileSync('src-tauri/tauri.conf.json', 'utf8'));
-  assert.match(page, /local_recent_files/);
+  assert.match(page, /useGraphSearch/);
   assert.match(page, /local_user_first_name/);
   assert.match(page, /Good morning/);
   assert.match(page, /Good afternoon/);
   assert.match(page, /Good evening/);
   assert.match(page, /No recent files yet/);
   assert.match(page, /Loading recent files/);
-  assert.match(page, /local_recent_photos/);
+  assert.match(page, /index_search/);
   assert.match(page, /Choose Pictures folder/);
   assert.match(page, /convertFileSrc\(photo\.path\)/);
   assert.doesNotMatch(page, /aria-label="Speak"|Good afternoon, Sami/);
@@ -73,8 +73,8 @@ test('floating search is a local Tauri window with keyboard result actions', () 
   const app = readFileSync('src-tauri/src/lib.rs', 'utf8');
   assert.match(html, /aria-label="zega floating search"/);
   assert.match(html, /aria-label="Local results"/);
-  assert.match(page, /invoke<LocalFile\[]>\('local_recent_files'\)/);
-  assert.match(page, /invoke<LocalPane\[]>\('local_settings_panes'\)/);
+  assert.match(page, /useGraphSearch\(query\)/);
+  assert.match(page, /resultGroups/);
   assert.match(page, /ArrowDown/);
   assert.match(page, /ArrowUp/);
   assert.match(page, /event\.key === 'Enter'/);
@@ -107,8 +107,10 @@ test('the menu agent starts without the main window and exposes explicit zega ac
   assert.match(menu, /"main"\s*=>\s*show_main_window/);
   assert.match(app, /main_window_closed\(window\.app_handle\(\)\)/);
   assert.match(launcher, /event\.metaKey && event\.key === 'Enter'/);
-  assert.match(launcher, /invoke\('open_local_file'/);
-  assert.match(launcher, /invoke\('open_settings_pane'/);
+  assert.match(launcher, /openGraphResult\(result\)/);
+  const graph = readFileSync('src/lib/index-search.ts', 'utf8');
+  assert.match(graph, /invoke\('index_open_result'/);
+  assert.match(graph, /invoke\('open_settings_pane'/);
 });
 
 test('MapLibre uses the same-origin module worker and its adjacent shared chunk', () => {

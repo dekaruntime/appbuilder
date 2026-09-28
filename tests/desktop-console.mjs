@@ -51,12 +51,13 @@ try {
     window.__TAURI_EVENT_PLUGIN_INTERNALS__ = { unregisterListener: () => {} };
     window.__TAURI_INTERNALS__ = {
       transformCallback: () => 1,
-      invoke: async command => {
+      invoke: async (command, args) => {
         if (command === 'plugin:event|listen') return 1;
         if (command === 'plugin:event|unlisten') return null;
         if (command === 'native_theme') return null;
         if (command === 'shortcut_status') return { registered: true, label: '⌥Space', platform: 'macos' };
-        if (command === 'local_recent_files') return [{ name: 'fixture.txt', location: 'Documents', fileType: 'TXT', modifiedLabel: '2 min ago', path: '/Users/test/Documents/fixture.txt' }];
+        if (command === 'index_search') return args.query === 'photos' ? [{ id: 2, key: 'photo', kind: 'photos', name: 'fixture-photo.jpg', path: '/Users/test/Pictures/fixture-photo.jpg', offline: false, detail: 'Photo' }] : [{ id: 1, key: 'file', kind: 'files', name: 'fixture.txt', path: '/Users/test/Documents/fixture.txt', offline: false, detail: 'File' }, { id: 2, key: 'photo', kind: 'photos', name: 'fixture-photo.jpg', path: '/Users/test/Pictures/fixture-photo.jpg', offline: false, detail: 'Photo' }];
+        if (command === 'index_status') return { itemsIndexed: 2, lastScan: null, scanning: false, paused: false, skipped: 0 };
         if (command === 'local_settings_panes') return [];
         if (command === 'local_user_first_name') return 'Test';
         if (command === 'local_pictures_access_granted') return picturesGranted;
@@ -68,7 +69,7 @@ try {
     };
   });
   await localPage.goto('http://localhost:1421/', { waitUntil: 'networkidle' });
-  await localPage.getByText('fixture.txt').waitFor();
+  await localPage.getByText('fixture.txt', { exact: true }).waitFor();
   assert.match(await localPage.locator('.hello h2').innerText(), /^Good (morning|afternoon|evening), Test$/);
   await localPage.getByRole('button', { name: 'Choose Pictures folder' }).click();
   await localPage.getByAltText('fixture-photo.jpg').waitFor();
@@ -95,10 +96,10 @@ try {
         if (command === 'native_theme') return null;
         if (command === 'shortcut_status') return { registered: true, label: 'Alt+Space', platform: new URL(location.href).searchParams.get('platform') || 'macos', squareCorners: new URL(location.href).searchParams.has('omarchy') };
         if (command === 'plugin:event|listen') return 1;
-        if (command === 'local_recent_files') return [{
-          name: 'Local fixture.txt', location: 'Documents', fileType: 'TXT',
-          modifiedLabel: 'Just now', path: '/Users/example/Documents/Local fixture.txt',
-        }, { name: 'Local fixture.txt', location: 'Downloads', fileType: 'TXT', modifiedLabel: 'Just now', path: '/Users/example/Downloads/Local fixture.txt' }];
+        if (command === 'index_search') return [
+          { id: 1, key: 'documents-file', kind: 'files', name: 'Local fixture.txt', path: '/Users/example/Documents/Local fixture.txt', offline: false, detail: 'File' },
+          { id: 2, key: 'downloads-file', kind: 'files', name: 'Local fixture.txt', path: '/Users/example/Downloads/Local fixture.txt', offline: false, detail: 'File' },
+        ].filter(row => row.path.toLowerCase().includes(args.query.toLowerCase()));
         if (command === 'local_settings_panes') return [];
         return null;
       },
@@ -106,8 +107,8 @@ try {
   });
   await launcher.goto('http://localhost:1421/launcher/', { waitUntil: 'networkidle' });
   const input = launcher.getByRole('textbox', { name: 'Search this Mac' });
-  await launcher.getByText('Local fixture.txt').first().waitFor();
-  assert.equal(await launcher.getByText('Local fixture.txt').count(), 2, 'same-named files from different folders remain separate results');
+  await launcher.getByText('Local fixture.txt', { exact: true }).first().waitFor();
+  assert.equal(await launcher.getByText('Local fixture.txt', { exact: true }).count(), 2, 'same-named files from different folders remain separate results');
   const rootBackground = await launcher.locator('.float-root').evaluate(element => getComputedStyle(element).backgroundColor);
   assert.match(rootBackground, /0, 0, 0, 0|transparent/);
   const panelBackground = await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor);
@@ -134,15 +135,15 @@ try {
   await launcher.screenshot({ path: '.tmp/desktop-agent-launcher.png' });
   await input.fill('Downloads');
   await launcher.waitForFunction(() => document.querySelectorAll('.float-group .lrow').length === 1);
-  assert.equal(await launcher.getByText('Local fixture.txt').count(), 1, 'typing filters results without submitting');
+  assert.equal(await launcher.getByText('Local fixture.txt', { exact: true }).count(), 1, 'typing filters results without submitting');
   await input.fill('');
   await launcher.waitForFunction(() => document.querySelectorAll('.float-group .lrow').length === 2);
   await input.press('ArrowDown');
   await input.press('Enter');
-  await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'open_local_file'));
+  await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'index_open_result'));
   let commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
-  assert.ok(commands.includes('open_local_file'));
-  assert.equal(await launcher.evaluate(() => window.mockCommands.find(([name]) => name === 'open_local_file')[1].path), '/Users/example/Downloads/Local fixture.txt', 'the selected duplicate name opens its own file path');
+  assert.ok(commands.includes('index_open_result'));
+  assert.equal(await launcher.evaluate(() => window.mockCommands.find(([name]) => name === 'index_open_result')[1].key), 'downloads-file', 'the selected duplicate name opens its own file path');
   assert.ok(commands.includes('hide_search_window'));
   assert.ok(!commands.includes('show_main_window'), 'opening a local result never shows zega');
   assert.equal(await launcher.evaluate(() => window.mainVisible), false);
@@ -155,7 +156,7 @@ try {
   assert.equal(await launcher.evaluate(() => window.mainVisible), true);
   for (const target of ['input', '.float-group .lrow', '.lfoot .local-note']) {
     await launcher.reload({ waitUntil: 'networkidle' });
-    await launcher.getByText('Local fixture.txt').first().waitFor();
+    await launcher.getByText('Local fixture.txt', { exact: true }).first().waitFor();
     if (target === '.lfoot .local-note') await launcher.locator(target).click();
     else await launcher.locator(target).first().focus();
     if (target !== 'input') assert.equal(await launcher.locator('input').evaluate(element => document.activeElement === element), false);
@@ -166,7 +167,7 @@ try {
     assert.equal(await launcher.evaluate(() => window.mainVisible), false);
   }
   await launcher.goto('http://localhost:1421/launcher/?platform=linux', { waitUntil: 'networkidle' });
-  await launcher.getByText('Local fixture.txt').first().waitFor();
+  await launcher.getByText('Local fixture.txt', { exact: true }).first().waitFor();
   assert.notEqual(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'Other Linux desktops retain rounded corners');
   const linuxBackground = await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor);
   assert.match(linuxBackground, /\/\s*0\.97\)/, 'Linux needs a readable translucent surface without macOS material');
