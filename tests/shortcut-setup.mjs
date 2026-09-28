@@ -16,10 +16,9 @@ try {
   const fits = async () => {
     const dimensions = await page.evaluate(() => ({width: innerWidth, height: innerHeight, scrollWidth: document.documentElement.scrollWidth, scrollHeight: document.documentElement.scrollHeight}));
     assert.ok(dimensions.scrollHeight <= dimensions.height && dimensions.scrollWidth <= dimensions.width, `Setup must fit without scrolling: ${JSON.stringify(dimensions)}`);
-    for (const button of await page.getByRole('button').all()) {
-      const box = await button.boundingBox();
-      if (box) assert.ok(box.y >= 0 && box.y + box.height <= dimensions.height, 'Every visible button must be reachable without scrolling');
-    }
+    // Measure every button in one evaluate: listing locators and then measuring them one by one races re-renders.
+    const unreachable = await page.evaluate(height => [...document.querySelectorAll('button')].map(button => button.getBoundingClientRect()).filter(box => box.width > 0 && box.height > 0 && (box.top < 0 || box.bottom > height)).length, dimensions.height);
+    assert.equal(unreachable, 0, 'Every visible button must be reachable without scrolling');
   };
   const errors = [];
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
