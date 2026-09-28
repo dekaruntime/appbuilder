@@ -1,0 +1,55 @@
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import test from 'node:test';
+
+test('static export opens on the computer graph shell', () => {
+  const html = readFileSync('out/index.html', 'utf8');
+  assert.match(html, /aria-label="Graphs"/);
+  assert.match(html, /aria-label="computer"/);
+  assert.match(html, /zega <span class="v">computer<\/span>/);
+  assert.match(html, /Ask <span class="v">computer<\/span> anything/);
+  assert.match(html, /aria-label="Ask computer anything"/);
+  assert.match(html, /src="\/desktop-auth\.js"/);
+  assert.match(readFileSync('src/app/page.tsx', 'utf8'), /hour < 12 \? 'Good morning' : hour < 18 \? 'Good afternoon' : 'Good evening'/);
+  assert.match(html, /Recent files/);
+  assert.match(html, /Recent photos/);
+  assert.doesNotMatch(html, /Download link|marketing homepage/i);
+});
+
+test('desktop auth uses the loopback account commands', () => {
+  const auth = readFileSync('public/desktop-auth.js', 'utf8');
+  const native = readFileSync('src-tauri/src/account.rs', 'utf8');
+  const loopback = readFileSync('src-tauri/src/loopback.rs', 'utf8');
+  assert.match(auth, /invoke\('account_start'\)/);
+  assert.match(auth, /invoke\('account_status'\)/);
+  assert.match(native, /https:\/\/account\.zega\.earth/);
+  assert.match(loopback, /challenge/);
+  assert.match(native, /dev\.zega\.desktop/);
+});
+
+test('product source contains no sample data from the design mock', () => {
+  const sourceFiles = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const path = `${directory}/${entry.name}`;
+    return entry.isDirectory() ? sourceFiles(path) : /\.(tsx?|jsx?)$/.test(entry.name) ? [path] : [];
+  });
+  const sampleData = ['Lisbon itinerary', 'Bow River', 'Good afternoon, Sami', 'zega pitch — Sept.key'];
+  for (const file of sourceFiles('src')) {
+    const source = readFileSync(file, 'utf8');
+    for (const sample of sampleData) assert.ok(!source.includes(sample), `${sample} must not appear in ${file}`);
+  }
+});
+
+test('the main window capability permits its draggable title bar', () => {
+  const capability = JSON.parse(readFileSync('src-tauri/capabilities/default.json', 'utf8'));
+  assert.ok(capability.windows.includes('main'));
+  assert.ok(capability.permissions.includes('core:window:allow-start-dragging'));
+});
+
+test('MapLibre uses the same-origin module worker and its adjacent shared chunk', () => {
+  const config = readFileSync('src/lib/maplibre-worker.ts', 'utf8');
+  const worker = readFileSync('out/globe/maplibre-gl-worker.mjs', 'utf8');
+  const shared = readFileSync('out/globe/maplibre-gl-shared.mjs', 'utf8');
+  assert.match(config, /setWorkerUrl\('\/globe\/maplibre-gl-worker\.mjs'\)/);
+  assert.match(worker, /maplibre-gl-shared\.mjs/);
+  assert.ok(shared.length > 100_000, 'the bundled shared worker module was copied');
+});

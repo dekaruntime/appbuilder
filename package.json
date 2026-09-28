@@ -1,0 +1,36 @@
+{
+  "name": "zega-desktop",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=24"
+  },
+  "scripts": {
+    "dev": "next dev --port 1420",
+    "prebuild": "node scripts/copy-maplibre-worker.mjs",
+    "build": "next build --webpack",
+    "build:desktop": "npm run build",
+    "check": "tsc --noEmit",
+    "test:desktop": "node --test tests/desktop-shell.test.mjs",
+    "test:desktop:console": "node tests/desktop-console.mjs",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "@fontsource-variable/figtree": "^5.3.0",
+    "@fontsource/ibm-plex-mono": "^5.3.0",
+    "@tauri-apps/api": "2.11.1",
+    "maplibre-gl": "6.11.1",
+    "next": "16.3.6",
+    "react": "19.2.0",
+    "react-dom": "19.2.0"
+  },
+  "devDependencies": {
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^24",
+    "@types/react": "^19",
+    "@types/react-dom": "^19",
+    "playwright": "1.63.0",
+    "typescript": "^5.9"
+  }
+}

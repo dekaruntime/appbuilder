@@ -1,0 +1,9 @@
+node_modules/
+.next/
+out/
+public/globe/maplibre-gl-worker.mjs
+public/globe/maplibre-gl-shared.mjs
+.target/
+.tmp/
+*.tsbuildinfo
+src-tauri/target/
