@@ -31,7 +31,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   desktop:
-    runs-on: blacksmith-6vcpu-macos-15
+    # bugsy (Apple Silicon). Not the iMac: that X64 macOS host is the agents'
+    # build machine.
+    runs-on: [self-hosted, macOS, ARM64]
     timeout-minutes: 30
     env:
       CI: 'true'
