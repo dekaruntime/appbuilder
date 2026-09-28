@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { readFileSync } from 'node:fs';
+import { readFileSync, readdirSync } from 'node:fs';
 import test from 'node:test';
 
 test('static export opens on the computer graph shell', () => {
@@ -10,7 +10,7 @@ test('static export opens on the computer graph shell', () => {
   assert.match(html, /Ask <span class="v">computer<\/span> anything/);
   assert.match(html, /aria-label="Ask computer anything"/);
   assert.match(html, /src="\/desktop-auth\.js"/);
-  assert.match(html, /Good afternoon, Sami/);
+  assert.match(readFileSync('src/app/page.tsx', 'utf8'), /hour < 12 \? 'Good morning' : hour < 18 \? 'Good afternoon' : 'Good evening'/);
   assert.match(html, /Recent files/);
   assert.match(html, /Recent photos/);
   assert.doesNotMatch(html, /Download link|marketing homepage/i);
@@ -25,6 +25,18 @@ test('desktop auth uses the loopback account commands', () => {
   assert.match(native, /https:\/\/account\.zega\.earth/);
   assert.match(loopback, /challenge/);
   assert.match(native, /dev\.zega\.desktop/);
+});
+
+test('product source contains no sample data from the design mock', () => {
+  const sourceFiles = directory => readdirSync(directory, { withFileTypes: true }).flatMap(entry => {
+    const path = `${directory}/${entry.name}`;
+    return entry.isDirectory() ? sourceFiles(path) : /\.(tsx?|jsx?)$/.test(entry.name) ? [path] : [];
+  });
+  const sampleData = ['Lisbon itinerary', 'Bow River', 'Good afternoon, Sami', 'zega pitch — Sept.key'];
+  for (const file of sourceFiles('src')) {
+    const source = readFileSync(file, 'utf8');
+    for (const sample of sampleData) assert.ok(!source.includes(sample), `${sample} must not appear in ${file}`);
+  }
 });
 
 test('the main window capability permits its draggable title bar', () => {
