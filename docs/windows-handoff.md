@@ -55,7 +55,7 @@ occupied. Do not change Windows or other apps' shortcuts automatically.
   persistence, timeout and retry. Test elevated applications separately.
 - Tray click opens the same floating, centered search. Drag the header.
   Corners stay rounded on Windows; no opaque outer rectangle.
-- Search has **17px text**, no top-right shortcut badge, no submit arrow.
+- Search has **20px text**, no top-right shortcut badge, no submit arrow.
   Typing filters; Enter acts; Escape closes with input, row or background focus.
 - Main remains hidden for normal search actions. Explicit Open zega opens it;
   closing main keeps the agent alive. Check Windows modifier handling rather

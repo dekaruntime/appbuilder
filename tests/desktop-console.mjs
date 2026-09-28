@@ -125,7 +125,7 @@ try {
   const drags = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
   assert.equal(await launcher.locator('.lhead .kbd').count(), 0, 'the panel header has no shortcut badge');
   assert.equal(await launcher.getByRole('button', {name: 'Open selected result'}).count(), 0, 'search needs no submit button');
-  assert.equal(await input.evaluate(element => getComputedStyle(element).fontSize), '17px', 'search text is three pixels larger');
+  assert.equal(await input.evaluate(element => getComputedStyle(element).fontSize), '20px', 'search text includes both requested three-pixel increases');
   await input.dispatchEvent('mousedown', { button: 0 });
   await launcher.locator('.lhead').dispatchEvent('mousedown', { button: 2 });
   assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), drags, 'search editing and right-click do not drag the window');
