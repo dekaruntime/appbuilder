@@ -21,9 +21,9 @@ chown -R builder:builder /build
 
 su builder -s /bin/bash -c '
   set -euo pipefail
-  cd /build/zega
+  cd /build/zega/packaging/arch
   export PKGDEST=/build/zega BUILDDIR=/build/work SRCDEST=/build/src
-  makepkg -p /build/zega/packaging/arch/PKGBUILD -f --noconfirm
+  makepkg -f --noconfirm
 '
 
 cp /build/zega/zega-"$ZEGA_PKGVER"-1-x86_64.pkg.tar.zst /out/
