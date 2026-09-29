@@ -1,0 +1,173 @@
+name: Release bundles
+# Builds the distributables (dmg / NSIS / AppImage) plus their Tauri updater
+# payloads for all three platforms — signed by a throwaway key that exists
+# only inside the run — and proves the release manifest pipeline in a dry run.
+# NOTHING is uploaded: signing with zega's real updater key and the R2 upload
+# happen on the publishing machine via scripts/publish-release.mjs (APS 37
+# rule 1: the key never leaves it).
+# Apple notarization and Azure Trusted Signing land with their secrets; until
+# then macOS installs need right-click → Open once and Windows shows
+# SmartScreen once.
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'src-tauri/**'
+      - 'src/**'
+      - 'public/desktop-auth.js'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/release.yml'
+  pull_request:
+    paths:
+      - 'src-tauri/**'
+      - 'src/**'
+      - 'public/desktop-auth.js'
+      - 'scripts/**'
+      - 'tests/**'
+      - 'package.json'
+      - 'package-lock.json'
+      - '.github/workflows/release.yml'
+  workflow_dispatch:
+permissions:
+  contents: read
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: true
+jobs:
+  bundle:
+    name: Bundle ${{ matrix.platform }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # bugsy (Apple Silicon), per the runner policy; macOS bundling only
+          # ever runs on our own Mac runner.
+          - platform: macos
+            runs-on: [self-hosted, macOS, ARM64]
+            bundles: app,dmg
+          - platform: windows
+            runs-on: [self-hosted, Windows, X64]
+            bundles: nsis
+          - platform: linux
+            runs-on: [self-hosted, Linux, X64]
+            bundles: appimage
+    runs-on: ${{ matrix.runs-on }}
+    # One shell on every platform: Windows runners default to PowerShell,
+    # and every step here is bash (Git for Windows' bash on win11-vm).
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 60
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      # Job level, never per step (AGENTS.md): every rustc invocation must go
+      # through sccache; the `sccache --version` step fails the job closed if
+      # the wrapper is not actually on PATH.
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.target
+      TMPDIR: ${{ github.workspace }}/.tmp
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '26'
+          cache: npm
+      - run: mkdir -p "$TMPDIR" && chmod 700 "$TMPDIR"
+      - if: matrix.platform == 'linux'
+        run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:desktop
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: '1.96.0'
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - run: sccache --version
+      # CI has no real signing key (APS 37 rule 1: it never leaves the
+      # publishing machine). `tauri build` insists on signing when a pubkey is
+      # configured, so it gets a throwaway key created in $TMPDIR for this run
+      # only; scripts/publish-release.mjs re-signs every payload with zega's
+      # real key at publish time, so these signatures never reach a user.
+      - name: Throwaway updater key for this run only
+        run: |
+          node_modules/.bin/tauri signer generate -w "$TMPDIR/ci-throwaway.key" -p "" -f
+          # Tauri accepts a path here; the key file has no trailing newline,
+          # so a heredoc delimiter appended after it would never match.
+          key="$TMPDIR/ci-throwaway.key"
+          # Git bash on Windows hands native programs /c/... paths unconverted.
+          if command -v cygpath >/dev/null; then key=$(cygpath -m "$key"); fi
+          echo "TAURI_SIGNING_PRIVATE_KEY=$key" >> "$GITHUB_ENV"
+          echo 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD=' >> "$GITHUB_ENV"
+        shell: bash
+      # Name the bundles: updater archives come only from app/nsis/appimage.
+      - run: node_modules/.bin/tauri build --bundles ${{ matrix.bundles }}
+        shell: bash
+      # The macOS updater tarball is named plain `zega.app.tar.gz`; the
+      # publish script fails closed on payloads whose arch it cannot tell, so
+      # name it for the runner's arch (bugsy is Apple Silicon).
+      - if: matrix.platform == 'macos'
+        run: mv .target/release/bundle/macos/zega.app.tar.gz .target/release/bundle/macos/zega-aarch64.app.tar.gz
+      # Prove the manifest pipeline end to end with the same throwaway key:
+      # sign the payloads, write canary.json, print it. --dry-run never
+      # touches the network or the bucket.
+      - name: Dry-run release manifest (throwaway key)
+        run: |
+          node scripts/publish-release.mjs --version 0.0.0-canary-ci --channel canary \
+            --key "$TMPDIR/ci-throwaway.key" --artifacts .target/release/bundle \
+            --dry-run --out "$TMPDIR/dry-run-out"
+          cat "$TMPDIR/dry-run-out/canary.json"
+        shell: bash
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: bundles-${{ matrix.platform }}
+          path: |
+            .target/release/bundle/**/*.dmg
+            .target/release/bundle/**/*.app.tar.gz
+            .target/release/bundle/**/*.exe
+            .target/release/bundle/**/*.nsis.zip
+            .target/release/bundle/**/*.AppImage
+            .target/release/bundle/**/*.AppImage.tar.gz
+          if-no-files-found: error
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: manifest-dry-run-${{ matrix.platform }}
+          path: ${{ github.workspace }}/.tmp/dry-run-out/
+          if-no-files-found: error
+  updater-e2e:
+    name: Updater end-to-end proof
+    # bugsy: the proof needs a real desktop session for the tray app; it runs
+    # the full update → relaunch cycle against a local fake update server.
+    runs-on: [self-hosted, macOS, ARM64]
+    timeout-minutes: 90
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.target
+      TMPDIR: ${{ github.workspace }}/.tmp
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '26'
+          cache: npm
+      - run: mkdir -p "$TMPDIR" && chmod 700 "$TMPDIR"
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:desktop
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: '1.96.0'
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - run: sccache --version
+      - run: node tests/updater-e2e.mjs all

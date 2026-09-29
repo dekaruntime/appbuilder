@@ -2,7 +2,7 @@
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "zega",
   "version": "0.1.0",
-  "identifier": "dev.zega.desktop",
+  "identifier": "earth.zega.desktop",
   "build": {
     "frontendDist": "../out",
     "devUrl": "http://localhost:1420",
@@ -33,6 +33,17 @@
     }
   },
   "bundle": {
-    "active": false
+    "active": true,
+    "createUpdaterArtifacts": true,
+    "icon": ["icons/icon.png", "icons/icon.ico"]
+  },
+  "plugins": {
+    "updater": {
+      "active": true,
+      "endpoints": [
+        "https://releases.zega.earth/desktop/{channel}.json"
+      ],
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IEI2ODJFNkMxNjU3NERDNkUKUldSdTNIUmx3ZWFDdHRBMEo5ZDdkU25QckFxS0cxZUpsQmppMWlydmdLdHdDVW5tK2pvNElFUmQK"
+    }
   }
 }

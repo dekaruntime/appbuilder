@@ -24,7 +24,7 @@ test('desktop auth uses the loopback account commands', () => {
   assert.match(auth, /invoke\('account_status'\)/);
   assert.match(native, /https:\/\/account\.zega\.earth/);
   assert.match(loopback, /challenge/);
-  assert.match(native, /dev\.zega\.desktop/);
+  assert.match(native, /earth\.zega\.desktop/);
 });
 
 test('product source contains no sample data from the design mock', () => {

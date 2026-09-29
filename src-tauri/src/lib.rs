@@ -16,6 +16,7 @@ mod shortcut_config;
 #[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
 mod shortcut_portal;
 mod shortcut_setup;
+mod update;
 mod window_placement;
 #[cfg(target_os = "windows")]
 mod windows_apps;
@@ -43,6 +44,10 @@ pub fn run() {
         }))
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init());
+    // Package-manager builds compile the updater out entirely (APS 37
+    // package-manager rule); direct downloads self-update.
+    #[cfg(not(feature = "packaged"))]
+    let builder = builder.plugin(tauri_plugin_updater::Builder::new().build());
     builder
         .invoke_handler(tauri::generate_handler![
             appearance::native_theme,
@@ -67,6 +72,8 @@ pub fn run() {
             menu::hide_search_window,
             menu::show_main_window,
             menu::open_search_window,
+            update::update_status,
+            update::set_update_channel,
             shortcut_setup::shortcut_status,
             shortcut_setup::shortcut_apply,
             shortcut_setup::shortcut_begin_test,
@@ -77,6 +84,9 @@ pub fn run() {
         .setup(|app| {
             appearance::initialize(app.handle());
             menu::install_tray(app.handle())?;
+            // The update check runs on its own thread; it never blocks setup,
+            // and an unreachable update server cannot hang startup (APS 37).
+            update::initialize(app.handle());
             let settings = local::SettingsIndex::discover();
             app.manage(index_bridge::IndexState::start(
                 app.handle(),
@@ -104,6 +114,7 @@ pub fn run() {
             if (std::env::args().any(|arg| arg == "--search") || shortcut_launch) && !login_launch {
                 menu::open_search_window(app.handle().clone())?;
             }
+            eprintln!("zega desktop {} ready", app.package_info().version);
             Ok(())
         })
         .on_window_event(|window, event| {

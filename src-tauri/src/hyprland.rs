@@ -280,11 +280,15 @@ mod tests {
         let first = replace_block(
             original,
             &Binding::for_platform("linux"),
-            "dev.zega.desktop",
+            "earth.zega.desktop",
         )
         .unwrap();
-        let next =
-            replace_block(&first, &Binding::for_platform("macos"), "dev.zega.desktop").unwrap();
+        let next = replace_block(
+            &first,
+            &Binding::for_platform("macos"),
+            "earth.zega.desktop",
+        )
+        .unwrap();
         assert!(next.starts_with(original));
         assert_eq!(next.matches(START).count(), 1);
         assert!(!next.contains("SUPER + Z"));
@@ -292,7 +296,7 @@ mod tests {
         assert!(replace_block(
             &first.replace("hl.dsp.global", "user.changed"),
             &Binding::default(),
-            "dev.zega.desktop"
+            "earth.zega.desktop"
         )
         .is_err());
     }

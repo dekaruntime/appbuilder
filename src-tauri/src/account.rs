@@ -23,7 +23,7 @@ pub const IDENTITY_ORIGIN: &str = "https://account.zega.earth";
 // Earth API origin. No authenticated API calls yet; reserved for when the
 // shell fetches account-scoped site data.
 const KEYCHAIN: Keychain = Keychain {
-    service: "dev.zega.desktop",
+    service: "earth.zega.desktop",
     user: "zega-desktop-session",
 };
 
