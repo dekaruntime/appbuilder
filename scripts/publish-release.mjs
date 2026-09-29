@@ -33,7 +33,9 @@ const BUCKET = 'zega-desktop-releases';
 const ORIGIN = 'https://releases.zega.earth';
 const PREFIX = 'desktop';
 const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
-const TAURI_CLI = path.join(REPO_ROOT, 'node_modules', '.bin', 'tauri');
+// The CLI's own JS entry, run with this node: node_modules/.bin/tauri is a
+// .cmd shim on Windows, which execFileSync cannot run without a shell.
+const TAURI_CLI = path.join(REPO_ROOT, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
 
 const args = process.argv.slice(2);
 function option(name) {
@@ -165,7 +167,7 @@ for (const payload of payloads) {
   const staged = path.join(staging, canonical);
   cpSync(payload.file, staged);
   try {
-    execFileSync(TAURI_CLI, ['signer', 'sign', '-f', keyPath, '--app-version', version, staged],
+    execFileSync(process.execPath, [TAURI_CLI, 'signer', 'sign', '-f', keyPath, '--app-version', version, staged],
       { stdio: ['ignore', 'ignore', 'pipe'], env: process.env });
   } catch (error) {
     fail(`signing ${canonical} failed (Needs Sami: TAURI_SIGNING_PRIVATE_KEY (+ password) on this machine): ${error.stderr}`);

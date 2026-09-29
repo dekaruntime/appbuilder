@@ -10,6 +10,7 @@ name: Release bundles
 # SmartScreen once.
 on:
   push:
+    branches: [main]
     paths:
       - 'src-tauri/**'
       - 'src/**'
@@ -46,10 +47,13 @@ jobs:
           # ever runs on our own Mac runner.
           - platform: macos
             runs-on: [self-hosted, macOS, ARM64]
+            bundles: app,dmg
           - platform: windows
             runs-on: [self-hosted, Windows, X64]
+            bundles: nsis
           - platform: linux
             runs-on: [self-hosted, Linux, X64]
+            bundles: appimage
     runs-on: ${{ matrix.runs-on }}
     # One shell on every platform: Windows runners default to PowerShell,
     # and every step here is bash (Git for Windows' bash on win11-vm).
@@ -96,10 +100,14 @@ jobs:
           node_modules/.bin/tauri signer generate -w "$TMPDIR/ci-throwaway.key" -p "" -f
           # Tauri accepts a path here; the key file has no trailing newline,
           # so a heredoc delimiter appended after it would never match.
-          echo "TAURI_SIGNING_PRIVATE_KEY=$TMPDIR/ci-throwaway.key" >> "$GITHUB_ENV"
+          key="$TMPDIR/ci-throwaway.key"
+          # Git bash on Windows hands native programs /c/... paths unconverted.
+          if command -v cygpath >/dev/null; then key=$(cygpath -m "$key"); fi
+          echo "TAURI_SIGNING_PRIVATE_KEY=$key" >> "$GITHUB_ENV"
           echo 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD=' >> "$GITHUB_ENV"
         shell: bash
-      - run: node_modules/.bin/tauri build
+      # Name the bundles: updater archives come only from app/nsis/appimage.
+      - run: node_modules/.bin/tauri build --bundles ${{ matrix.bundles }}
         shell: bash
       # The macOS updater tarball is named plain `zega.app.tar.gz`; the
       # publish script fails closed on payloads whose arch it cannot tell, so
