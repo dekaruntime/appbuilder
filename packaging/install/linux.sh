@@ -160,6 +160,11 @@ install_arch() {
   curl -fsSL "$BASE/arch/zega.asc" -o "$keyfile"
   fpr=$(gpg --show-keys --with-colons "$keyfile" 2>/dev/null | awk -F: '$1 == "fpr" { print $10; exit }')
   [ -n "$fpr" ] || { echo "linux.sh: could not read the fingerprint of $BASE/arch/zega.asc" >&2; rm -f "$keyfile"; exit 1; }
+  # A fresh system (e.g. a new container) has no pacman keyring yet; normal
+  # Arch installs initialized it during installation.
+  if ! pacman-key --list-keys > /dev/null 2>&1; then
+    as_root pacman-key --init
+  fi
   if pacman-key --list-keys 2>/dev/null | grep -q "$fpr"; then
     echo "  The key is already trusted; nothing to change."
   else
