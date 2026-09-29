@@ -28,11 +28,12 @@ import { mkdirSync, mkdtempSync, existsSync, readFileSync, writeFileSync, cpSync
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
 const BUCKET = 'zega-desktop-releases';
 const ORIGIN = 'https://releases.zega.earth';
 const PREFIX = 'desktop';
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 // The CLI's own JS entry, run with this node: node_modules/.bin/tauri is a
 // .cmd shim on Windows, which execFileSync cannot run without a shell.
 const TAURI_CLI = path.join(REPO_ROOT, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');

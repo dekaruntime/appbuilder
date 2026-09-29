@@ -22,8 +22,9 @@ import { execFileSync, spawn } from 'node:child_process';
 import { appendFileSync, cpSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import path from 'node:path';
 import process from 'node:process';
+import { fileURLToPath } from 'node:url';
 
-const REPO_ROOT = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TAURI_CLI = path.join(REPO_ROOT, 'node_modules', '.bin', 'tauri');
 const WORK = path.join(REPO_ROOT, '.tmp', 'updater-e2e');
 const PORT = 48741;
