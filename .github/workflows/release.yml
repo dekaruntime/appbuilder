@@ -1,10 +1,13 @@
 name: Release bundles
 # Builds the distributables (dmg / NSIS / AppImage) plus their Tauri updater
-# payloads for all three platforms — signed by a throwaway key that exists
-# only inside the run — and proves the release manifest pipeline in a dry run.
-# NOTHING is uploaded: signing with zega's real updater key and the R2 upload
-# happen on the publishing machine via scripts/publish-release.mjs (APS 37
-# rule 1: the key never leaves it).
+# payloads for all three platforms, the package-manager builds (.deb and the
+# arch `zega` package, both --features packaged, updater compiled out), and
+# proves the release manifest pipeline in a dry run — all with throwaway keys
+# that exist only inside the run. NOTHING is uploaded to R2: the `publish`
+# job (main / dispatch only, demon's zega-release runner) re-signs everything
+# with the real keys and stages the signed apt + pacman repos as a workflow
+# artifact; Ava publishes from there (APS 37 rule 1: the keys never leave the
+# publishing machine).
 # Apple notarization and Azure Trusted Signing land with their secrets; until
 # then macOS installs need right-click → Open once and Windows shows
 # SmartScreen once.
@@ -16,6 +19,7 @@ on:
       - 'src/**'
       - 'public/desktop-auth.js'
       - 'scripts/**'
+      - 'packaging/**'
       - 'tests/**'
       - 'package.json'
       - 'package-lock.json'
@@ -26,6 +30,7 @@ on:
       - 'src/**'
       - 'public/desktop-auth.js'
       - 'scripts/**'
+      - 'packaging/**'
       - 'tests/**'
       - 'package.json'
       - 'package-lock.json'
@@ -140,6 +145,88 @@ jobs:
           name: manifest-dry-run-${{ matrix.platform }}
           path: ${{ github.workspace }}/.tmp/dry-run-out/
           if-no-files-found: error
+  bundle-linux-deb:
+    name: Bundle linux .deb (packaged)
+    # demon. Package-manager build (APS 37): --features packaged compiles the
+    # updater out and tauri.packaged.conf.json strips the updater endpoints,
+    # so apt owns updates and no endpoint string reaches the binary. Lives
+    # next to (never inside) the AppImage job; outputs share no file.
+    runs-on: [self-hosted, Linux, X64]
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 60
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      RUSTC_WRAPPER: sccache
+      SCCACHE_GHA_ENABLED: 'true'
+      CARGO_INCREMENTAL: '0'
+      CARGO_TARGET_DIR: ${{ github.workspace }}/.target
+      TMPDIR: ${{ github.workspace }}/.tmp
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '26'
+          cache: npm
+      - run: mkdir -p "$TMPDIR" && chmod 700 "$TMPDIR"
+      - run: sudo apt-get update && sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf
+      - run: npm ci --no-audit --no-fund
+      - run: npm run build:desktop
+      - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
+        with:
+          toolchain: '1.96.0'
+      - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
+      - run: sccache --version
+      # Same throwaway-key shape as the bundle job: CI never holds a real key;
+      # the deb is signed later by publish-release.mjs with the packages key.
+      - name: Throwaway updater key for this run only
+        run: |
+          node_modules/.bin/tauri signer generate -w "$TMPDIR/ci-throwaway.key" -p "" -f
+          key="$TMPDIR/ci-throwaway.key"
+          echo "TAURI_SIGNING_PRIVATE_KEY=$key" >> "$GITHUB_ENV"
+          echo 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD=' >> "$GITHUB_ENV"
+        shell: bash
+      - run: node_modules/.bin/tauri build --bundles deb --features packaged --config src-tauri/tauri.packaged.conf.json
+        shell: bash
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: bundles-linux-deb
+          path: .target/release/bundle/**/*.deb
+          if-no-files-found: error
+  bundle-linux-arch:
+    name: Bundle arch zega package (packaged)
+    # demon. makepkg runs inside a throwaway archlinux container (no secrets;
+    # the package is signed later by publish-release.mjs). The Rust build in
+    # the container goes through sccache (packaging/arch/PKGBUILD fails closed
+    # without it).
+    runs-on: [self-hosted, Linux, X64]
+    defaults:
+      run:
+        shell: bash
+    timeout-minutes: 90
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      TMPDIR: ${{ github.workspace }}/.tmp
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '26'
+      - run: mkdir -p "$TMPDIR" && chmod 700 "$TMPDIR"
+      - run: packaging/arch/build-in-docker.sh "$TMPDIR/arch"
+        shell: bash
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: bundles-linux-arch
+          path: ${{ github.workspace }}/.tmp/arch/*.pkg.tar.zst
+          if-no-files-found: error
   updater-e2e:
     name: Updater end-to-end proof
     # bugsy: the proof needs a real desktop session for the tray app; it runs
@@ -171,3 +258,59 @@ jobs:
       - uses: mozilla-actions/sccache-action@fc920bf0ec8de6ee65d409111f7ec508035751ba # v0.0.11
       - run: sccache --version
       - run: node tests/updater-e2e.mjs all
+  publish:
+    name: Sign payloads + Linux repos (staged, never uploaded)
+    # demon's zega-release runner: the only place the real keys exist
+    # (/home/zega-release/.keys for the updater key, /home/zega-release/.gnupg
+    # for the one packages key that signs both the apt and the pacman repo).
+    # Push to main / manual dispatch only — NEVER a pull request. Everything
+    # is staged and uploaded as a workflow artifact; nothing touches R2 or
+    # aur.archlinux.org here — Ava publishes (APS 37).
+    runs-on: [self-hosted, zega-release]
+    needs: [bundle, bundle-linux-deb, bundle-linux-arch]
+    if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    timeout-minutes: 30
+    env:
+      CI: 'true'
+      NEXT_TELEMETRY_DISABLED: '1'
+      TMPDIR: ${{ github.workspace }}/.tmp
+    steps:
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5
+        with:
+          node-version: '26'
+          cache: npm
+      - run: mkdir -p "$TMPDIR" && chmod 700 "$TMPDIR"
+      - run: npm ci --no-audit --no-fund
+      - uses: actions/download-artifact@634f93cb2916e3fdff6788551b99b062d0335ce0 # v5
+        with:
+          pattern: bundles-*
+          path: artifacts
+          merge-multiple: true
+      # Fail closed: without both keys this job stops before signing anything.
+      - name: Resolve the signing keys
+        run: |
+          set -euo pipefail
+          key_file=$(find /home/zega-release/.keys -maxdepth 1 -type f -name '*.key' | sort | head -n 1)
+          [ -n "$key_file" ] || { echo 'publish: no updater key under /home/zega-release/.keys (Needs Sami: zega updater key on the zega-release runner)'; exit 1; }
+          gpg_key_id=$(gpg --homedir /home/zega-release/.gnupg --batch --list-secret-keys --with-colons 2>/dev/null | awk -F: '$1 == "sec" { print $5; exit }')
+          [ -n "$gpg_key_id" ] || { echo 'publish: no secret key in /home/zega-release/.gnupg (Needs Sami: zega Linux packages key on the zega-release runner)'; exit 1; }
+          echo "UPDATER_KEY=$key_file" >> "$GITHUB_ENV"
+          echo "GPG_KEY_ID=$gpg_key_id" >> "$GITHUB_ENV"
+        shell: bash
+      - name: Stage the signed release (dry run — no network, no bucket)
+        run: |
+          set -euo pipefail
+          base=$(node -p "require('./src-tauri/tauri.conf.json').version")
+          node scripts/publish-release.mjs --version "$base-canary-${GITHUB_SHA::8}" --channel canary \
+            --key "$UPDATER_KEY" --artifacts artifacts \
+            --gpg-home /home/zega-release/.gnupg --gpg-key-id "$GPG_KEY_ID" \
+            --dry-run --out "$TMPDIR/signed"
+        shell: bash
+      - uses: actions/upload-artifact@330a01c490aca151604b8cf639adc76d48f6c5d4 # v5
+        with:
+          name: signed-release
+          path: ${{ github.workspace }}/.tmp/signed/
+          if-no-files-found: error

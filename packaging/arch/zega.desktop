@@ -1,0 +1,8 @@
+[Desktop Entry]
+Type=Application
+Name=zega
+Comment=zega desktop shell — your computer as a graph
+Exec=zega-desktop
+Icon=zega
+Terminal=false
+Categories=Utility;
