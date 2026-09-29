@@ -13,6 +13,8 @@ pacman -Syu --noconfirm --needed \
 
 useradd --create-home builder
 mkdir -p /build/zega
+# The mounted checkout is owned by the host user, not root.
+git config --global --add safe.directory /src
 git -C /src archive HEAD | tar -x -C /build/zega
 sed -i "s/^pkgver=.*/pkgver=$ZEGA_PKGVER/" /build/zega/packaging/arch/PKGBUILD
 chown -R builder:builder /build
