@@ -16,6 +16,9 @@ url="https://zega.earth"
 license=('LicenseRef-zega')
 depends=('webkit2gtk-4.1' 'gtk3' 'libappindicator-gtk3' 'librsvg')
 makedepends=('rustup' 'nodejs' 'npm' 'pkgconf')
+# ring's precompiled assembly breaks under makepkg's default -flto=auto
+# (undefined ring_core_* symbols at link time); build without LTO.
+options=('!lto')
 source=()
 
 # This PKGBUILD lives in the repository it packages: packaging/arch/PKGBUILD,
