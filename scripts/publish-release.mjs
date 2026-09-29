@@ -105,9 +105,12 @@ function* walk(dir) {
   }
 }
 
-// Updater payloads the Tauri updater downloads and installs. Tauri names them
-// e.g. `zega_0.2.0_aarch64.app.tar.gz`, `zega_0.2.0_x64-setup.nsis.zip`,
-// `zega_0.2.0_amd64.AppImage.tar.gz`; classify by family plus an arch token.
+// Updater payloads the Tauri updater downloads and installs. With Tauri v2's
+// `createUpdaterArtifacts: true`, macOS ships `zega_0.2.0_aarch64.app.tar.gz`,
+// while Windows and Linux sign the installer itself: `zega_0.2.0_x64-setup.exe`
+// and `zega_0.2.0_amd64.AppImage` are both what a user downloads and what the
+// updater installs. The v1-compatible names (`.nsis.zip`, `.AppImage.tar.gz`)
+// are still accepted. Classify by family plus an arch token.
 function archOf(name) {
   if (/universal/i.test(name)) return 'universal';
   if (/aarch64|arm64/i.test(name)) return 'aarch64';
@@ -119,8 +122,8 @@ function classify(name) {
   if (/\.nsis\.zip$/.test(name)) return { kind: 'payload', os: 'windows', arch: archOf(name) ?? 'x86_64', ext: 'nsis.zip' };
   if (/\.AppImage\.tar\.gz$/.test(name)) return { kind: 'payload', os: 'linux', arch: archOf(name) ?? 'x86_64', ext: 'AppImage.tar.gz' };
   if (/\.dmg$/.test(name)) return { kind: 'installer', os: 'macos', arch: archOf(name), ext: 'dmg' };
-  if (/-setup\.exe$/i.test(name) && !/\.nsis\.zip$/.test(name)) return { kind: 'installer', os: 'windows', arch: archOf(name) ?? 'x86_64', ext: 'exe' };
-  if (/\.AppImage$/.test(name)) return { kind: 'installer', os: 'linux', arch: archOf(name) ?? 'x86_64', ext: 'AppImage' };
+  if (/-setup\.exe$/i.test(name)) return { kind: 'both', os: 'windows', arch: archOf(name) ?? 'x86_64', ext: 'exe' };
+  if (/\.AppImage$/.test(name)) return { kind: 'both', os: 'linux', arch: archOf(name) ?? 'x86_64', ext: 'AppImage' };
   return null;
 }
 function platformKeys(os, arch) {
@@ -136,11 +139,11 @@ for (const file of files) {
   const found = classify(path.basename(file));
   if (!found) continue;
   if (!found.arch) fail(`cannot determine the CPU architecture of ${path.basename(file)}; rename it to include aarch64/x86_64/universal`);
-  if (found.kind === 'payload') payloads.push({ file, ...found, platforms: platformKeys(found.os, found.arch) });
-  else installers.push({ file, ...found });
+  if (found.kind !== 'installer') payloads.push({ file, ...found, platforms: platformKeys(found.os, found.arch) });
+  if (found.kind !== 'payload') installers.push({ file, ...found });
 }
 if (payloads.length === 0) {
-  fail(`no updater payloads (*.app.tar.gz, *.nsis.zip, *.AppImage.tar.gz) found under ${artifactsDir}`);
+  fail(`no updater payloads (*.app.tar.gz, *-setup.exe, *.AppImage, or v1 *.nsis.zip / *.AppImage.tar.gz) found under ${artifactsDir}`);
 }
 
 const sha256 = file => createHash('sha256').update(readFileSync(file)).digest('hex');
@@ -195,6 +198,7 @@ const manifest = {
 if (dryRun) {
   writeFileSync(path.join(staging, `${channel}.json`), `${JSON.stringify(manifest, null, 2)}\n`);
   for (const installer of installers) {
+    if (installer.kind === 'both') continue; // already staged and signed above
     cpSync(installer.file, path.join(staging, `zega-${version}-${installer.os}-${installer.arch}.${installer.ext}`));
   }
   console.log(`dry run: signed ${payloads.length} updater payload(s); manifest and artifacts in ${staging}`);
@@ -203,6 +207,7 @@ if (dryRun) {
 
 // --- upload + read-back verification ---------------------------------------
 for (const installer of installers) {
+  if (installer.kind === 'both') continue; // uploaded below as a signed payload
   const canonical = `zega-${version}-${installer.os}-${installer.arch}.${installer.ext}`;
   cpSync(installer.file, path.join(staging, canonical));
   uploadFile(canonical, path.join(staging, canonical));
