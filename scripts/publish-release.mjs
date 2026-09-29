@@ -34,6 +34,9 @@ const BUCKET = 'zega-desktop-releases';
 const ORIGIN = 'https://releases.zega.earth';
 const PREFIX = 'desktop';
 const REPO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+// Declared before any top-level code runs: uploadJson() reaches it via
+// stagingFor() during the publish, long before the function bodies below.
+let stagingMemo = null;
 // The CLI's own JS entry, run with this node: node_modules/.bin/tauri is a
 // .cmd shim on Windows, which execFileSync cannot run without a shell.
 const TAURI_CLI = path.join(REPO_ROOT, 'node_modules', '@tauri-apps', 'cli', 'tauri.js');
@@ -247,7 +250,6 @@ function uploadJson(key, value) {
   writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`);
   uploadFile(key, file);
 }
-let stagingMemo = null;
 function stagingFor() {
   if (!stagingMemo) stagingMemo = mkdtempSync(path.join(process.env.TMPDIR ?? tmpdir(), 'zega-release-'));
   return stagingMemo;
