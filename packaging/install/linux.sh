@@ -232,7 +232,8 @@ install_appimage() {
 }
 
 case "$DISTRO_TOKENS" in
-  *" debian "*) install_debian ;;
+  # elementary OS (and a few others) list only ubuntu in ID_LIKE.
+  *" debian "*|*" ubuntu "*) install_debian ;;
   *" arch "*) install_arch ;;
   *) install_appimage ;;
 esac
