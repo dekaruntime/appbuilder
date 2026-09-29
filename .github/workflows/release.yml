@@ -47,9 +47,9 @@ jobs:
           - platform: macos
             runs-on: [self-hosted, macOS, ARM64]
           - platform: windows
-            runs-on: windows-latest
+            runs-on: [self-hosted, Windows, X64]
           - platform: linux
-            runs-on: ubuntu-latest
+            runs-on: [self-hosted, Linux, X64]
     runs-on: ${{ matrix.runs-on }}
     timeout-minutes: 60
     env:
@@ -89,9 +89,9 @@ jobs:
       - name: Throwaway updater key for this run only
         run: |
           node_modules/.bin/tauri signer generate -w "$TMPDIR/ci-throwaway.key" -p "" -f
-          echo 'TAURI_SIGNING_PRIVATE_KEY<<KEYEOF' >> "$GITHUB_ENV"
-          cat "$TMPDIR/ci-throwaway.key" >> "$GITHUB_ENV"
-          echo 'KEYEOF' >> "$GITHUB_ENV"
+          # Tauri accepts a path here; the key file has no trailing newline,
+          # so a heredoc delimiter appended after it would never match.
+          echo "TAURI_SIGNING_PRIVATE_KEY=$TMPDIR/ci-throwaway.key" >> "$GITHUB_ENV"
           echo 'TAURI_SIGNING_PRIVATE_KEY_PASSWORD=' >> "$GITHUB_ENV"
         shell: bash
       - run: node_modules/.bin/tauri build
