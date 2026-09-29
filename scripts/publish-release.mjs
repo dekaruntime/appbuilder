@@ -164,6 +164,10 @@ const minimumOs = Object.fromEntries(options('minimum-os').map(entry => {
   return [os, floor];
 }));
 
+// --key is the only key source: `tauri signer sign` rejects -f when
+// TAURI_SIGNING_PRIVATE_KEY is also set (as it is in CI, for `tauri build`).
+const { TAURI_SIGNING_PRIVATE_KEY: _key, TAURI_SIGNING_PRIVATE_KEY_PATH: _keyPath, ...signerEnv } = process.env;
+
 const platforms = {};
 for (const payload of payloads) {
   const canonical = `zega-${version}-${payload.os}-${payload.arch}.${payload.ext}`;
@@ -171,7 +175,7 @@ for (const payload of payloads) {
   cpSync(payload.file, staged);
   try {
     execFileSync(process.execPath, [TAURI_CLI, 'signer', 'sign', '-f', keyPath, '--app-version', version, staged],
-      { stdio: ['ignore', 'ignore', 'pipe'], env: process.env });
+      { stdio: ['ignore', 'ignore', 'pipe'], env: signerEnv });
   } catch (error) {
     fail(`signing ${canonical} failed (Needs Sami: TAURI_SIGNING_PRIVATE_KEY (+ password) on this machine): ${error.stderr}`);
   }
