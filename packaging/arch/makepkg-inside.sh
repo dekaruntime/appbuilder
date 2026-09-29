@@ -23,7 +23,7 @@ su builder -s /bin/bash -c '
   set -euo pipefail
   cd /build/zega
   export PKGDEST=/build/zega BUILDDIR=/build/work SRCDEST=/build/src
-  makepkg -p packaging/arch/PKGBUILD -f --noconfirm
+  makepkg -p /build/zega/packaging/arch/PKGBUILD -f --noconfirm
 '
 
 cp /build/zega/zega-"$ZEGA_PKGVER"-1-x86_64.pkg.tar.zst /out/
