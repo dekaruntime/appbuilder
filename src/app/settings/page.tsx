@@ -2,6 +2,7 @@
 import AppTitlebar from '../../components/AppTitlebar';
 import IndexSettings from '../../components/IndexSettings';
 import ShortcutHint from '../../components/ShortcutHint';
+import UpdateSettings from '../../components/UpdateSettings';
 
 export default function SettingsPage() {
   return <main className="stage"><div className="window">
@@ -15,6 +16,7 @@ export default function SettingsPage() {
         <ShortcutHint />
       </section>
       <IndexSettings />
+      <UpdateSettings />
     </section>
   </div></main>;
 }

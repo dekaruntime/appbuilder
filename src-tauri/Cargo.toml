@@ -15,6 +15,13 @@ tauri-build = { version = "2", features = [] }
 members = ["computer-index"]
 resolver = "2"
 
+[features]
+# `packaged` compiles the in-app updater OUT (APS 37 package-manager rule):
+# apt, AUR, Homebrew and winget own updates for installs they made, and the
+# choice is fixed at build time. Direct downloads (dmg, exe, AppImage) are
+# built without this feature and self-update.
+packaged = []
+
 [dependencies]
 computer-index = { path = "computer-index" }
 tauri = { version = "2", features = ["macos-private-api", "protocol-asset", "tray-icon"] }
@@ -28,13 +35,14 @@ getrandom = "0.2"
 zeroize = { version = "1", features = ["derive"] }
 tauri-plugin-opener = "2"
 tauri-plugin-single-instance = "2"
+tauri-plugin-updater = "2"
 plist = "1"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["sync", "macros", "time"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
-objc2-foundation = { version = "0.3.2", features = ["NSPathUtilities", "NSString"] }
+objc2-foundation = { version = "0.3.2", features = ["NSPathUtilities", "NSString", "NSProcessInfo"] }
 objc2 = "0.6"
 objc2-app-kit = { version = "0.3.2", features = ["NSApplication"] }
 
@@ -52,7 +60,7 @@ toml = "1.1.6"
 [target.'cfg(target_os = "windows")'.dependencies]
 windows = { version = "0.61", features = ["Win32_UI_Shell", "Win32_System_Com", "Win32_Graphics_Gdi", "Win32_UI_WindowsAndMessaging"] }
 png = "0.18"
-windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_NetworkManagement_WiFi"] }
+windows-sys = { version = "0.61", features = ["Win32_UI_WindowsAndMessaging", "Win32_UI_Input_KeyboardAndMouse", "Win32_System_LibraryLoader", "Win32_System_Threading", "Win32_NetworkManagement_WiFi", "Win32_System_SystemInformation", "Wdk_System_SystemServices"] }
 
 # Compile the portal adapter in macOS tests too; hardware dispatch still needs Linux.
 [target.'cfg(target_os = "macos")'.dev-dependencies]

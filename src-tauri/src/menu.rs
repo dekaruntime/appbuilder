@@ -1,9 +1,29 @@
+#[cfg(not(feature = "packaged"))]
+use std::sync::Mutex;
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 #[cfg(target_os = "macos")]
 use tauri::ActivationPolicy;
+#[cfg(not(feature = "packaged"))]
+use tauri::Wry;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+
+/// The tray menu's "Restart to update" entry, kept so the update module can
+/// light it up once a download has finished (APS 37: apply on next restart).
+/// Package-manager builds (`packaged` feature) have no updater and no item.
+#[cfg(not(feature = "packaged"))]
+pub struct RestartToUpdateMenuItem(Mutex<MenuItem<Wry>>);
+
+#[cfg(not(feature = "packaged"))]
+pub fn mark_update_ready(app: &AppHandle, version: &str) {
+    if let Some(item) = app.try_state::<RestartToUpdateMenuItem>() {
+        let _ = item.0.lock().map(|item| {
+            let _ = item.set_text(format!("Restart to update ({version})"));
+            let _ = item.set_enabled(true);
+        });
+    }
+}
 
 pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     set_accessory_policy(app);
@@ -18,6 +38,23 @@ pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     )?;
     let divider = PredefinedMenuItem::separator(app)?;
     let quit = PredefinedMenuItem::quit(app, None)?;
+    #[cfg(not(feature = "packaged"))]
+    let menu = {
+        let restart_update = MenuItem::with_id(
+            app,
+            "restart-update",
+            "Restart to update",
+            false,
+            None::<&str>,
+        )?;
+        let menu = Menu::with_items(
+            app,
+            &[&search, &main, &setup, &restart_update, &divider, &quit],
+        )?;
+        app.manage(RestartToUpdateMenuItem(Mutex::new(restart_update)));
+        menu
+    };
+    #[cfg(feature = "packaged")]
     let menu = Menu::with_items(app, &[&search, &main, &setup, &divider, &quit])?;
 
     TrayIconBuilder::new()
@@ -32,6 +69,7 @@ pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
             "shortcut-setup" => {
                 let _ = crate::shortcut_setup::show_shortcut_setup(app.clone());
             }
+            "restart-update" => crate::update::restart_to_update(app),
             _ => {}
         })
         .on_tray_icon_event(|tray, event| {
