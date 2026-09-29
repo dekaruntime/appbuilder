@@ -11,7 +11,7 @@
 //! - A manifest platform entry may set `minimum_os`; a release that drops an
 //!   OS version is never offered to that OS (rule 6). When the OS version
 //!   cannot be determined, the update is refused — fail closed.
-//! - Builds made for package managers (apt, AUR, Homebrew, winget) compile
+//! - Builds made for package managers (apt, pacman, Homebrew, winget) compile
 //!   this module with the `packaged` feature, which fixes the updater OFF at
 //!   build time; the package manager owns updates for those installs.
 

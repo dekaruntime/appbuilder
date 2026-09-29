@@ -10,7 +10,7 @@ type UpdateStatus = {
 };
 
 // APS 37: canary is an opt-in; the default is stable. Package-manager
-// installs (apt, AUR, Homebrew, winget) are updated by the package manager,
+// installs (apt, pacman, Homebrew, winget) are updated by the package manager,
 // so those builds report enabled: false and this section explains that
 // instead of offering a channel choice.
 export default function UpdateSettings() {

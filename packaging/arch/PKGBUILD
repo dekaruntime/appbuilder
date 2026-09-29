@@ -1,0 +1,46 @@
+# zega — pacman package for the zega repository at releases.zega.earth/arch/$arch.
+# shellcheck disable=SC2034,SC2154  # pkgname/pkgver/… and $startdir/$pkgdir are makepkg's contract
+# Built in CI (and in the container proofs) by packaging/arch/build-in-docker.sh
+# inside a throwaway archlinux container — no secrets; signing happens later in
+# scripts/publish-release.mjs. The binary is built with --features packaged, so
+# the in-app updater is compiled out and pacman owns updates (APS 37).
+#
+# pkgver is rewritten from src-tauri/tauri.conf.json by build-in-docker.sh
+# before makepkg runs, so the package version always matches the app.
+pkgname=zega
+pkgver=0.1.0
+pkgrel=1
+pkgdesc="zega desktop shell — your computer as a graph"
+arch=('x86_64')
+url="https://zega.earth"
+license=('LicenseRef-zega')
+depends=('webkit2gtk-4.1' 'gtk3' 'libappindicator-gtk3' 'librsvg')
+makedepends=('rustup' 'nodejs' 'npm' 'pkgconf')
+# ring's precompiled assembly breaks under makepkg's default -flto=auto
+# (undefined ring_core_* symbols at link time); build without LTO.
+options=('!lto')
+source=()
+
+# This PKGBUILD lives in the repository it packages: packaging/arch/PKGBUILD,
+# so the checkout root is two directories up from $startdir.
+_repo_root=$(cd "$startdir/../.." && pwd)
+
+build() {
+  cd "$_repo_root" || return
+  export CARGO_TARGET_DIR="$_repo_root/.target"
+  export RUSTC_WRAPPER=sccache
+  export CARGO_INCREMENTAL=0
+  sccache --version > /dev/null
+  npm ci --no-audit --no-fund
+  # tauri.packaged.conf.json strips the updater endpoints, so no updater
+  # endpoint string is compiled into a package-manager build.
+  node_modules/.bin/tauri build --no-bundle --features packaged \
+    --config src-tauri/tauri.packaged.conf.json
+}
+
+package() {
+  cd "$_repo_root" || return
+  install -Dm755 .target/release/zega-desktop "$pkgdir/usr/bin/zega-desktop"
+  install -Dm644 packaging/arch/zega.desktop "$pkgdir/usr/share/applications/zega.desktop"
+  install -Dm644 src-tauri/icons/icon.png "$pkgdir/usr/share/icons/hicolor/512x512/apps/zega.png"
+}

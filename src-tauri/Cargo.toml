@@ -17,7 +17,7 @@ resolver = "2"
 
 [features]
 # `packaged` compiles the in-app updater OUT (APS 37 package-manager rule):
-# apt, AUR, Homebrew and winget own updates for installs they made, and the
+# apt, pacman, Homebrew and winget own updates for installs they made, and the
 # choice is fixed at build time. Direct downloads (dmg, exe, AppImage) are
 # built without this feature and self-update.
 packaged = []
