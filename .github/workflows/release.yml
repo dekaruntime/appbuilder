@@ -51,6 +51,11 @@ jobs:
           - platform: linux
             runs-on: [self-hosted, Linux, X64]
     runs-on: ${{ matrix.runs-on }}
+    # One shell on every platform: Windows runners default to PowerShell,
+    # and every step here is bash (Git for Windows' bash on win11-vm).
+    defaults:
+      run:
+        shell: bash
     timeout-minutes: 60
     env:
       CI: 'true'
