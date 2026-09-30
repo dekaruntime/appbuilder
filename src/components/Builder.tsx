@@ -5,7 +5,7 @@ import { listen } from '@tauri-apps/api/event';
 import BuilderRail from './BuilderRail';
 import { BUILDER_INSTRUCTIONS, EMPTY_DOCUMENT, buildRequest, extractHtml, withPreviewBridge } from '../lib/builder';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
-import { RIXSE_INSTRUCTIONS, applyOp, editRequest, parseDocument, parseOp, serialize, takeLines } from '../lib/rixse-edit';
+import { RIXSE_INSTRUCTIONS, applyOp, collapseBulk, editRequest, expandOp, parseDocument, parseOp, serialize, takeLines } from '../lib/rixse-edit';
 import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
 
 type Mode = 'full' | 'rixse';
@@ -45,6 +45,9 @@ export default function Builder() {
   const [mode, setMode] = useState<Mode>('rixse');
   const [failure, setFailure] = useState<string | null>(null);
   const answer = useRef('');
+  // One prompt-cache key per design session: its requests share an opening
+  // (the rules, then the design), which ChatGPT can serve from cache.
+  const session = useRef(`zega-builder-${crypto.randomUUID()}`);
   const lastDraw = useRef(0);
   const log = useRef<HTMLDivElement>(null);
   const signedIn = view?.status === 'signed_in';
@@ -97,7 +100,7 @@ export default function Builder() {
       else if (event.kind === 'failed') setFailure(event.message);
       else done = event;
     };
-    try { await invoke('chatgpt_ask', { question, model, instructions, onEvent: channel }); }
+    try { await invoke('chatgpt_ask', { question, model, instructions, cacheKey: session.current, onEvent: channel }); }
     catch (reason) { setFailure(String(reason)); return null; }
     return done;
   };
@@ -118,6 +121,7 @@ export default function Builder() {
   // line and are applied to the page as they arrive.
   const rixsePass = async (ask: string, base: Version) => {
     const doc = parseDocument(base.html);
+    const collapsed = collapseBulk(base.html);
     let buffer = '';
     let ops = 0;
     let missed = 0;
@@ -130,11 +134,11 @@ export default function Builder() {
         if (!op) continue;
         if (op.op === 'full') { full = op.reason; continue; }
         ops += 1;
-        if (!applyOp(doc, op)) missed += 1;
+        if (!applyOp(doc, expandOp(op, collapsed.bulk))) missed += 1;
       }
       setBuilding(state => state && { ...state, ops });
     };
-    const done = await request(editRequest(ask, base.html), RIXSE_INSTRUCTIONS, text => {
+    const done = await request(editRequest(ask, collapsed.text), RIXSE_INSTRUCTIONS, text => {
       const taken = takeLines(buffer + text);
       buffer = taken.rest;
       if (!taken.lines.length) return;

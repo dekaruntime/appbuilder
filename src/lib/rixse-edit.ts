@@ -29,6 +29,8 @@ Operations ("sel" is a CSS selector that must match in the current document; add
 {"op":"title","text":"..."}                           the document title
 {"op":"full","reason":"..."}                           ONLY if the change rebuilds most of the page; send this line alone
 
+Bulky data (SVG path geometry, embedded images) appears as tokens like RX_BULK_12. Each stands for data the app keeps. To keep that graphic when you move or rewrite its element, copy the token exactly; never invent new tokens, and write real new SVG when you draw something new.
+
 Rules:
 - Make the smallest set of edits that fully carries out the change, and keep everything the request does not touch exactly as it is.
 - Change every place the request affects: copy, headings, product names, prices, image alt text, the title.
@@ -37,6 +39,47 @@ Rules:
 
 export function editRequest(ask: string, current: string): string {
   return `Current document:\n\n${current}\n\nChange: ${ask}`;
+}
+
+// Bulky data the model never needs to read: SVG path geometry and embedded
+// data: URIs. The request carries a short token in its place; the document
+// the ops apply to keeps the original, and tokens the model copies into new
+// HTML are expanded back before the op is applied.
+const BULK_TOKEN = /RX_BULK_(\d+)/g;
+const BULKY = [
+  /(\s(?:d|points)=")([^"]{80,})(")/g,
+  /(\sd=')([^']{80,})(')/g,
+  /()(data:[a-z0-9.+/-]+;base64,[A-Za-z0-9+/=]{120,})()/gi,
+];
+
+export type Collapsed = { text: string; bulk: string[] };
+
+export function collapseBulk(html: string): Collapsed {
+  const bulk: string[] = [];
+  let text = html;
+  for (const pattern of BULKY) {
+    text = text.replace(pattern, (_, before: string, data: string, after: string) => {
+      bulk.push(data);
+      return `${before}RX_BULK_${bulk.length - 1}${after}`;
+    });
+  }
+  return { text, bulk };
+}
+
+export function expandBulk(text: string, bulk: string[]): string {
+  return text.replace(BULK_TOKEN, (token, index: string) => bulk[Number(index)] ?? token);
+}
+
+/** An op with every bulk token in its payload expanded back to the original data. */
+export function expandOp(op: EditOp, bulk: string[]): EditOp {
+  if (!bulk.length) return op;
+  const expand = (value: string) => expandBulk(value, bulk);
+  switch (op.op) {
+    case 'html': case 'replace': case 'insert': return { ...op, html: expand(op.html) };
+    case 'css': return { ...op, css: expand(op.css) };
+    case 'attr': return { ...op, value: op.value === null ? null : expand(op.value) };
+    default: return op;
+  }
 }
 
 /** Complete JSON lines from a streaming answer; the unfinished tail stays behind. */

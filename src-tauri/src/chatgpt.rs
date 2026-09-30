@@ -766,7 +766,14 @@ impl ChatGptState {
         }
     }
 
-    pub fn ask(&self, question: &str, model: &str, instructions: Option<&str>, send: impl FnMut(AskEvent)) -> Result<()> {
+    pub fn ask(
+        &self,
+        question: &str,
+        model: &str,
+        instructions: Option<&str>,
+        cache_key: Option<&str>,
+        send: impl FnMut(AskEvent),
+    ) -> Result<()> {
         let question = question.trim();
         let limit = if instructions.is_some() { MAX_BUILD_REQUEST } else { MAX_QUESTION };
         if question.is_empty() || question.len() > limit {
@@ -787,6 +794,12 @@ impl ChatGptState {
         // plain questions and sends none.
         if let Some(instructions) = instructions.filter(|text| !text.trim().is_empty()) {
             body["instructions"] = json!(instructions);
+        }
+        // Requests that share a key are routed to the same prompt cache, so a
+        // repeated opening (the rules, then the same design) is read from
+        // cache: faster, and counted as cached input.
+        if let Some(key) = cache_key.filter(|key| !key.is_empty()) {
+            body["prompt_cache_key"] = json!(key);
         }
         let started = Instant::now();
         let mut forced = false;
@@ -811,6 +824,7 @@ impl ChatGptState {
                     plain = true;
                     if let Some(body) = body.as_object_mut() {
                         body.remove("reasoning");
+                        body.remove("prompt_cache_key");
                     }
                     continue;
                 }
@@ -906,11 +920,12 @@ pub async fn chatgpt_ask(
     question: String,
     model: String,
     instructions: Option<String>,
+    cache_key: Option<String>,
     on_event: Channel<AskEvent>,
 ) -> Result<()> {
     let state = Arc::clone(&state);
     tauri::async_runtime::spawn_blocking(move || {
-        state.ask(&question, &model, instructions.as_deref(), |event| {
+        state.ask(&question, &model, instructions.as_deref(), cache_key.as_deref(), |event| {
             let _ = on_event.send(event);
         })
     })

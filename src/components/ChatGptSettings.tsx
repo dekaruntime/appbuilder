@@ -62,7 +62,7 @@ export default function ChatGptSettings() {
       else if (event.kind === 'failed') setFailure(event);
       else { setDone(event); reportTiming({ label: 'Answered', ms: event.elapsed_ms, tokens: event.tokens }); refreshUsage(); }
     };
-    try { await invoke('chatgpt_ask', { question, model, instructions: null, onEvent: channel }); }
+    try { await invoke('chatgpt_ask', { question, model, instructions: null, cacheKey: null, onEvent: channel }); }
     catch (reason) { setError(String(reason)); }
     finally { if (id === answerId.current) setAsking(false); }
   };
