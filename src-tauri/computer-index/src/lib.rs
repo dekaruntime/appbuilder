@@ -23,6 +23,9 @@ use zega::Zega;
 pub const SCHEMA: &str = include_str!("../schema.zql");
 pub type Result<T> = std::result::Result<T, String>;
 const KINDS: [&str; 5] = ["File", "Folder", "App", "Photo", "Video"];
+/// How many folders deep an app root is walked: the root (0), a group such
+/// as Utilities (1), a vendor folder (2) and the folder an app may sit in (3).
+const APP_ROOT_DEPTH: usize = 3;
 const REGISTERED_APP: &str = "registered-app:";
 
 #[derive(Clone, Default, Serialize)]
@@ -695,12 +698,12 @@ impl Index {
         let mut failed = Vec::<PathBuf>::new();
         let mut stack: Vec<_> = roots
             .iter()
-            .map(|r| (r.path.clone(), r.apps, None::<Record>))
+            .map(|r| (r.path.clone(), r.apps, None::<Record>, 0usize))
             .collect();
         let mut visited = HashSet::new();
         // Scope volume IDs to this scan so a remount is observed next time.
         let mut volumes = HashMap::new();
-        while let Some((path, apps, parent)) = stack.pop() {
+        while let Some((path, apps, parent, depth)) = stack.pop() {
             if self.paused.load(Ordering::Relaxed) {
                 return Ok(());
             }
@@ -726,6 +729,12 @@ impl Index {
                     continue;
                 }
             };
+            // In an app root only apps are results: a vendor's resource files
+            // (/Applications/Utilities/Adobe Creative Cloud/…/fil_PH.json) are
+            // never the user's files. Folders stay, unseen, for the walk.
+            if apps && r.kind != "App" && r.kind != "Folder" {
+                continue;
+            }
             if let Some(old) = catalog.get(&r.key) {
                 if old.kind != r.kind {
                     media = match old.kind.as_str() {
@@ -742,13 +751,16 @@ impl Index {
             if catalog.insert(r.key.clone(), r.clone()).is_none() && r.kind != "Folder" {
                 indexed_items += 1;
             }
-            if r.kind == "Folder" {
+            // App roots are walked only as deep as apps live
+            // (/Applications/Utilities/<vendor>/<app>.app), never through a
+            // vendor's own resource trees.
+            if r.kind == "Folder" && (!apps || depth < APP_ROOT_DEPTH) {
                 match fs::read_dir(&path) {
                     Ok(entries) => {
                         for entry in entries {
                             match entry {
                                 Ok(entry) if crawler::visible(&entry.path()) => {
-                                    stack.push((entry.path(), apps, Some(r.clone())))
+                                    stack.push((entry.path(), apps, Some(r.clone()), depth + 1))
                                 }
                                 Ok(_) => {}
                                 Err(_) => {
