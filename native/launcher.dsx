@@ -1,0 +1,52 @@
+import { search, result_keys, result_name, result_detail, open_result, hide_window, status_text, dark_mode } from "vm:host";
+
+export fn Launcher() {
+    let query = "";
+    let keys: Array<string> = [];
+    let selected = 0;
+    const choose = fn(key: string) { open_result(key); }
+    const input = fn(value: string) { query = value; selected = 0; keys = []; search(value); }
+    const key = fn(value: string) {
+        if (value == "escape") { hide_window(); }
+        if (0 < keys.length) {
+            if (value == "down") { selected += 1; if (selected == keys.length) { selected = 0; } }
+            if (value == "up") { selected -= 1; if (selected < 0) { selected = keys.length - 1; } }
+            if (value == "enter") { if (keys.has(selected)) { choose(keys[selected]); } }
+        }
+    }
+    const root_class = fn() {
+        if (dark_mode()) { return "p-4 gap-3 bg-[#1B1921] text-[#F1EEF7]"; }
+        return "p-4 gap-3 bg-[#FAFAFC] text-[#22202B]";
+    }
+    const input_class = fn() {
+        if (dark_mode()) { return "h-12 bg-[#292631] rounded-lg"; }
+        return "h-12 bg-[#FFFFFF] rounded-lg";
+    }
+    const row_class = fn(key: string) {
+        if (dark_mode()) {
+            if (keys.has(selected)) { if (key == keys[selected]) { return "h-16 p-3 gap-1 flex-col items-start overflow-hidden whitespace-nowrap bg-[#43365F] rounded-lg"; } }
+            return "h-16 p-3 gap-1 flex-col items-start overflow-hidden whitespace-nowrap bg-[#24212B] rounded-lg";
+        }
+        if (keys.has(selected)) { if (key == keys[selected]) { return "h-16 p-3 gap-1 flex-col items-start overflow-hidden whitespace-nowrap bg-[#EDE7FF] rounded-lg"; } }
+        return "h-16 p-3 gap-1 flex-col items-start overflow-hidden whitespace-nowrap bg-[#FFFFFF] rounded-lg";
+    }
+    const opened = fn() { input(""); }
+    const received = fn() { keys = result_keys(); selected = 0; }
+    const selection = fn() { return selected; }
+    const view = fn() {
+            return (
+                <view className={root_class()}>
+                    <p className="text-lg">zega · native search</p>
+                    <input className={input_class()} value={query} placeholder="Search apps and files…" onInput={fn(value: string) { input(value); }} onKeyDown={fn(value: string) { key(value); }} />
+                    <p className="text-sm text-[#8A8496]">{status_text()}</p>
+                    <div className="gap-1">
+                        {keys.map(fn(key: string) {
+                            return <button className={row_class(key)} onClick={fn() { choose(key); }}><p>{result_name(key)}</p><p className="text-sm text-[#8A8496]">{result_detail(key)}</p></button>;
+                        })}
+                    </div>
+                    <p className="text-sm text-[#8A8496]">Up/Down Navigate · Enter Open · Esc Close · Private. Secure. Local.</p>
+                </view>
+            );
+    }
+    return { opened: opened, results: received, selected: selection, view: view };
+}

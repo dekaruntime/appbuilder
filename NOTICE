@@ -10,3 +10,8 @@ This product includes software and data developed by third parties:
   (https://github.com/IBM/plex), licensed under the SIL Open Font License 1.1.
 - MapLibre GL JS (https://github.com/maplibre/maplibre-gl-js), licensed under
   the BSD 3-Clause License.
+
+The native launcher text input adapter (native/src/input.rs) is adapted from
+GPUI 0.2.2's examples/input.rs, Copyright Zed Industries, Apache License 2.0.
+The scene painter adapter (native/src/painter.rs) is adapted from Deka's native
+renderer at fd8e705d9622e19bf19fd78ad963971c15925c2d, Apache License 2.0.
