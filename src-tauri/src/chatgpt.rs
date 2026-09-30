@@ -48,6 +48,8 @@ const USAGE_FILE: &str = "chatgpt-usage.json";
 const USAGE_DAYS_KEPT: i64 = 60;
 const CHANGED: &str = "chatgpt-changed";
 const MAX_QUESTION: usize = 8000;
+/// A builder request carries the current design along with the change asked for.
+const MAX_BUILD_REQUEST: usize = 200_000;
 // Refresh a little early so a request never starts on a token about to lapse.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(60);
 
@@ -764,10 +766,11 @@ impl ChatGptState {
         }
     }
 
-    pub fn ask(&self, question: &str, model: &str, send: impl FnMut(AskEvent)) -> Result<()> {
+    pub fn ask(&self, question: &str, model: &str, instructions: Option<&str>, send: impl FnMut(AskEvent)) -> Result<()> {
         let question = question.trim();
-        if question.is_empty() || question.len() > MAX_QUESTION {
-            return Err(format!("Ask a question of up to {MAX_QUESTION} characters."));
+        let limit = if instructions.is_some() { MAX_BUILD_REQUEST } else { MAX_QUESTION };
+        if question.is_empty() || question.len() > limit {
+            return Err(format!("Ask a question of up to {limit} characters."));
         }
         // Low reasoning effort: search answers should start in a second or
         // two, not after a long think. A model that refuses the setting
@@ -780,6 +783,11 @@ impl ChatGptState {
             "stream": true,
             "reasoning": { "effort": "low" },
         });
+        // The builder sends its design rules as instructions; search asks
+        // plain questions and sends none.
+        if let Some(instructions) = instructions.filter(|text| !text.trim().is_empty()) {
+            body["instructions"] = json!(instructions);
+        }
         let started = Instant::now();
         let mut forced = false;
         let mut plain = false;
@@ -897,11 +905,12 @@ pub async fn chatgpt_ask(
     state: State<'_, Arc<ChatGptState>>,
     question: String,
     model: String,
+    instructions: Option<String>,
     on_event: Channel<AskEvent>,
 ) -> Result<()> {
     let state = Arc::clone(&state);
     tauri::async_runtime::spawn_blocking(move || {
-        state.ask(&question, &model, |event| {
+        state.ask(&question, &model, instructions.as_deref(), |event| {
             let _ = on_event.send(event);
         })
     })

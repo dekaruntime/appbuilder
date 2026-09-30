@@ -3,23 +3,16 @@ import { useEffect, useRef, useState } from 'react';
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import AnswerText from './AnswerText';
-import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
+import { formatMs, formatTokens, reportTiming } from '../lib/timing';
+import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
 
-type ChatGptView = { status: 'signed_out' | 'pending' | 'signed_in'; email: string | null; error: string | null };
-type Model = { slug: string; display_name: string };
 type Totals = { answers: number; input: number; output: number };
 type Usage = { today: Totals; last_7_days: Totals; all_time: Totals };
-type AskEvent =
-  | { kind: 'delta'; text: string }
-  | { kind: 'completed'; tokens: Tokens | null; elapsed_ms: number; first_word_ms: number | null }
-  | { kind: 'failed'; code: string | null; message: string; usage_limited: boolean };
 
 // Sign in with ChatGPT (developers.openai.com/siwc): answers run on the
 // user's own ChatGPT plan. The copy below ("Continue with ChatGPT", the
 // welcome line, "Using ChatGPT plan", "Manage usage") is OpenAI's required
 // wording. Only the typed question is sent; nothing from the computer graph.
-const USAGE_URL = 'https://chatgpt.com/settings/usage';
-const openUsage = () => { void invoke('plugin:opener|open_url', { url: USAGE_URL }).catch(() => {}); };
 
 export default function ChatGptSettings() {
   const [view, setView] = useState<ChatGptView | null>(null);
@@ -69,7 +62,7 @@ export default function ChatGptSettings() {
       else if (event.kind === 'failed') setFailure(event);
       else { setDone(event); reportTiming({ label: 'Answered', ms: event.elapsed_ms, tokens: event.tokens }); refreshUsage(); }
     };
-    try { await invoke('chatgpt_ask', { question, model, onEvent: channel }); }
+    try { await invoke('chatgpt_ask', { question, model, instructions: null, onEvent: channel }); }
     catch (reason) { setError(String(reason)); }
     finally { if (id === answerId.current) setAsking(false); }
   };
