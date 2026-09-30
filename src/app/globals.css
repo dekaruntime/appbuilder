@@ -284,8 +284,10 @@ html:has(.float-root), body:has(.float-root) { overflow: hidden; background: tra
 .chatgpt-answer p, .chatgpt-answer ul, .chatgpt-answer ol { margin: 8px 0; color: var(--ink); }
 .chatgpt-answer code { font: 13px var(--mono); padding: 1px 4px; border-radius: 4px; background: var(--tint); }
 .chatgpt-meta { margin: 8px 0 0; font-size: 12px; color: var(--soft); font-variant-numeric: tabular-nums; }
-.timing-corner { position: fixed; right: 12px; bottom: 10px; z-index: 5; padding: 3px 8px; border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); font: 400 11px var(--mono); color: var(--soft); font-variant-numeric: tabular-nums; pointer-events: none; }
+/* Bottom left, clear of the scroll bar; on the search page, just right of the graph rail. */
+.timing-corner { position: fixed; left: 12px; bottom: 10px; z-index: 5; padding: 3px 8px; border: 1px solid var(--edge); border-radius: 6px; background: var(--panel); font: 400 11px var(--mono); color: var(--soft); font-variant-numeric: tabular-nums; pointer-events: none; }
 .settings-page { padding-bottom: 72px; }
+.app ~ .timing-corner { left: 62px; }
 .earth-row span:first-child { display: grid; gap: 2px; text-align: left; }
 .earth-row .earth-url { color: var(--accent); }
 .earth-note { margin-top: 16px; font-size: 12px; color: var(--soft); }
