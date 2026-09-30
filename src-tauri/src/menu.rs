@@ -1,5 +1,5 @@
-#[cfg(not(feature = "packaged"))]
 use std::sync::Mutex;
+use std::time::{Duration, Instant};
 use tauri::image::Image;
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -7,7 +7,7 @@ use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent}
 use tauri::ActivationPolicy;
 #[cfg(not(feature = "packaged"))]
 use tauri::Wry;
-use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
+use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 /// The tray menu's "Restart to update" entry, kept so the update module can
 /// light it up once a download has finished (APS 37: apply on next restart).
@@ -88,12 +88,42 @@ pub fn install_tray(app: &AppHandle) -> tauri::Result<()> {
     Ok(())
 }
 
+/// Clicking outside the floating search closes it, like Spotlight. The
+/// menu-bar icon still toggles it: clicking the icon takes focus first, which
+/// hides the window, and that same click must not open it straight back up.
+const BLUR_CLICK_GRACE: Duration = Duration::from_millis(300);
+/// Some compositors report a focus loss while a window is still appearing;
+/// ignore losses this soon after showing.
+const SHOW_SETTLE: Duration = Duration::from_millis(150);
+
+struct Blur {
+    shown: Option<Instant>,
+    hidden: Option<Instant>,
+}
+
+static BLUR: Mutex<Blur> = Mutex::new(Blur { shown: None, hidden: None });
+
+fn blur_hides(shown: Option<Instant>, now: Instant) -> bool {
+    shown.is_none_or(|shown| now.duration_since(shown) >= SHOW_SETTLE)
+}
+
+fn click_reopens(hidden: Option<Instant>, now: Instant) -> bool {
+    hidden.is_none_or(|hidden| now.duration_since(hidden) >= BLUR_CLICK_GRACE)
+}
+
+fn mark_shown() {
+    if let Ok(mut blur) = BLUR.lock() {
+        blur.shown = Some(Instant::now());
+    }
+}
+
 pub fn toggle_search_window(app: &AppHandle) {
     let result = (|| -> tauri::Result<()> {
         let window = search_window(app)?;
         if window.is_visible()? {
             window.hide()?;
-        } else {
+        } else if click_reopens(BLUR.lock().ok().and_then(|blur| blur.hidden), Instant::now()) {
+            mark_shown();
             window.show()?;
             window.set_focus()?;
             activate_search_window(app);
@@ -107,6 +137,7 @@ pub fn toggle_search_window(app: &AppHandle) {
 #[tauri::command]
 pub fn open_search_window(app: AppHandle) -> Result<(), String> {
     let window = search_window(&app).map_err(|e| e.to_string())?;
+    mark_shown();
     window.show().map_err(|e| e.to_string())?;
     window.set_focus().map_err(|e| e.to_string())?;
     activate_search_window(&app);
@@ -159,6 +190,17 @@ fn search_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
     .center()
     .build()?;
     crate::window_placement::prepare(&window)?;
+    let blurred = window.clone();
+    window.on_window_event(move |event| {
+        if let WindowEvent::Focused(false) = event {
+            let now = Instant::now();
+            let Ok(mut blur) = BLUR.lock() else { return };
+            if blurred.is_visible().unwrap_or(false) && blur_hides(blur.shown, now) {
+                blur.hidden = Some(now);
+                let _ = blurred.hide();
+            }
+        }
+    });
     Ok(window)
 }
 
@@ -249,5 +291,26 @@ mod tests {
         let (pixels, _) = pixels.as_chunks::<4>();
         assert!(pixels.iter().any(|pixel| pixel[3] == 0));
         assert!(pixels.iter().any(|pixel| pixel[3] == 255));
+    }
+}
+
+#[cfg(test)]
+mod blur_tests {
+    use super::*;
+
+    #[test]
+    fn a_click_outside_closes_search_once_it_has_settled() {
+        let shown = Instant::now();
+        assert!(!blur_hides(Some(shown), shown + Duration::from_millis(50)), "a focus loss while appearing is ignored");
+        assert!(blur_hides(Some(shown), shown + Duration::from_millis(400)));
+        assert!(blur_hides(None, shown));
+    }
+
+    #[test]
+    fn the_menu_bar_click_that_closed_search_does_not_reopen_it() {
+        let hidden = Instant::now();
+        assert!(!click_reopens(Some(hidden), hidden + Duration::from_millis(100)));
+        assert!(click_reopens(Some(hidden), hidden + Duration::from_millis(500)), "a later click opens it again");
+        assert!(click_reopens(None, hidden));
     }
 }
