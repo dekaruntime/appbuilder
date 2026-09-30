@@ -86,18 +86,19 @@ export default function FloatingSearch() {
   </section>;
 
   return <main className="float-root" data-native-material={nativeMaterial} data-square-corners={squareCorners}><div className="launcher float-panel" role="dialog" aria-label="zega floating search">
-    <header className="lhead" onMouseDown={event => {
-      if (event.button === 0 && isTauri()) {
-        event.preventDefault();
-        void getCurrentWindow().startDragging().catch(error => console.error('Could not move search window', error));
-      }
-    }}><span className="gi" aria-hidden="true">⌕</span><span className="float-word">zega <span className="v">computer</span></span></header>
     <SearchBar className="float-search" inputRef={input} label={windows ? 'Search this computer' : 'Search this Mac'} value={query} onChange={value => { setQuery(value); setActive(0); }} onSubmit={() => { if (results[active]) void open(results[active]); }} onKeyDown={onKeyDown} />
     <div className="lres" role="listbox" aria-label="Local results">
       {resultGroups.map(group => <div key={group}>{renderGroup(resultGroupLabels[group], results.filter(row => row.kind === group))}</div>)}
       {(error || openError) && <p role="alert">{error || openError}</p>}
       {loading ? <div className="skeleton" aria-label="Loading local results" /> : !results.length && <p className="float-empty">No local matches.</p>}
     </div>
-    <footer className="lfoot"><span><kbd className="kbd">↑↓</kbd> Navigate</span><span><kbd className="kbd">↵</kbd> Open</span><span><kbd className="kbd">esc</kbd> Close</span><span className="local-note">Private. Secure. Local.</span></footer>
+    {/* No header: the search box is the topmost thing (Sami, desktop#39). The
+        footer carries the wordmark and is where the window is dragged from. */}
+    <footer className="lfoot" onMouseDown={event => {
+      if (event.button === 0 && isTauri()) {
+        event.preventDefault();
+        void getCurrentWindow().startDragging().catch(error => console.error('Could not move search window', error));
+      }
+    }}><span><kbd className="kbd">↑↓</kbd> Navigate</span><span><kbd className="kbd">↵</kbd> Open</span><span><kbd className="kbd">esc</kbd> Close</span><span className="float-word">zega <span className="v">computer</span></span></footer>
   </div></main>;
 }

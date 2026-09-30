@@ -120,17 +120,20 @@ try {
     assert.ok(footer.y >= 0 && footer.y + footer.height <= height, 'keyboard hints stay inside the window');
     assert.equal(await launcher.evaluate(() => document.documentElement.scrollHeight), height);
   }
-  for (const selector of ['.lhead', '.float-word .v', '.lhead .gi']) {
+  assert.equal(await launcher.locator('.lhead').count(), 0, 'the floating search has no header');
+  assert.equal(await launcher.locator('.float-panel').evaluate(panel => panel.firstElementChild?.classList.contains('float-search')), true, 'the search box is the topmost thing in the panel');
+  assert.equal(await launcher.locator('.lfoot .float-word').innerText(), 'zega computer', 'the footer carries the wordmark');
+  assert.equal(await launcher.getByText('Private. Secure. Local.').count(), 0);
+  for (const selector of ['.lfoot', '.lfoot .float-word .v']) {
     const before = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
     await launcher.locator(selector).dispatchEvent('mousedown', { button: 0 });
     assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), before + 1, `${selector} starts a native drag`);
   }
   const drags = await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length);
-  assert.equal(await launcher.locator('.lhead .kbd').count(), 0, 'the panel header has no shortcut badge');
   assert.equal(await launcher.getByRole('button', {name: 'Open selected result'}).count(), 0, 'search needs no submit button');
   assert.equal(await input.evaluate(element => getComputedStyle(element).fontSize), '20px', 'search text includes both requested three-pixel increases');
   await input.dispatchEvent('mousedown', { button: 0 });
-  await launcher.locator('.lhead').dispatchEvent('mousedown', { button: 2 });
+  await launcher.locator('.lfoot').dispatchEvent('mousedown', { button: 2 });
   assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'plugin:window|start_dragging').length), drags, 'search editing and right-click do not drag the window');
   await launcher.screenshot({ path: '.tmp/desktop-agent-launcher.png' });
   await input.fill('Downloads');
@@ -154,12 +157,13 @@ try {
   commands = await launcher.evaluate(() => window.mockCommands.map(([name]) => name));
   assert.ok(commands.includes('show_main_window'), 'Command+Return is the explicit main-window action');
   assert.equal(await launcher.evaluate(() => window.mainVisible), true);
-  for (const target of ['input', '.float-group .lrow', '.lfoot .local-note']) {
+  for (const target of ['input', '.float-group .lrow', '.lfoot .float-word']) {
     await launcher.reload({ waitUntil: 'networkidle' });
     await launcher.getByText('Local fixture.txt', { exact: true }).first().waitFor();
-    if (target === '.lfoot .local-note') await launcher.locator(target).click();
+    if (target === '.lfoot .float-word') await launcher.locator(target).click();
     else await launcher.locator(target).first().focus();
-    if (target !== 'input') assert.equal(await launcher.locator('input').evaluate(element => document.activeElement === element), false);
+    // A result row takes focus from the input. The footer is the drag handle, and pressing it keeps focus in search.
+    if (target === '.float-group .lrow') assert.equal(await launcher.locator('input').evaluate(element => document.activeElement === element), false);
     await launcher.keyboard.press('Escape');
     await launcher.waitForFunction(() => window.mockCommands.some(([name]) => name === 'hide_search_window'), null, { timeout: 2000 });
     assert.equal(await launcher.evaluate(() => window.mockCommands.filter(([name]) => name === 'hide_search_window').length), 1, `Escape from ${target} hides search exactly once`);
