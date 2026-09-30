@@ -552,6 +552,8 @@ dependencies = [
  "kamadak-exif",
  "libc",
  "notify",
+ "objc2",
+ "objc2-foundation",
  "regex",
  "serde",
  "serde_json",

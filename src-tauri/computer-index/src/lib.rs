@@ -710,6 +710,10 @@ impl Index {
             if !visited.insert(path.clone()) {
                 continue;
             }
+            // Never opened, never indexed: see crawler::icloud.
+            if crawler::icloud(&path) {
+                continue;
+            }
             let (mut r, mut media) = match crawler::record_cached(
                 &path,
                 apps,
