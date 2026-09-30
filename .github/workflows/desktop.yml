@@ -31,9 +31,9 @@ concurrency:
   cancel-in-progress: true
 jobs:
   desktop:
-    # bugsy (Apple Silicon). Not the iMac: that X64 macOS host is the agents'
-    # build machine.
-    runs-on: [self-hosted, macOS, ARM64]
+    # GitHub-hosted (Apple Silicon). This repo is public, so no job runs on a
+    # self-hosted runner: a pull request from a fork must never reach one.
+    runs-on: macos-15
     timeout-minutes: 30
     env:
       CI: 'true'
