@@ -1,5 +1,6 @@
 mod account;
 mod appearance;
+mod chatgpt;
 #[cfg(target_os = "linux")]
 mod desktop_identity;
 #[cfg(target_os = "linux")]
@@ -24,6 +25,7 @@ mod window_placement;
 mod windows_apps;
 
 use account::AccountState;
+use chatgpt::ChatGptState;
 use std::sync::Arc;
 use tauri::Manager;
 
@@ -63,6 +65,13 @@ pub fn run() {
             account::account_cancel,
             account::account_status,
             account::account_signout,
+            chatgpt::chatgpt_status,
+            chatgpt::chatgpt_start,
+            chatgpt::chatgpt_cancel,
+            chatgpt::chatgpt_disconnect,
+            chatgpt::chatgpt_models,
+            chatgpt::chatgpt_ask,
+            chatgpt::chatgpt_usage,
             local::local_recent_files,
             local::local_recent_photos,
             local::local_pictures_access_granted,
@@ -99,6 +108,8 @@ pub fn run() {
             let handle = app.handle().clone();
             let state = AccountState::new(handle).map_err(|error| error.to_string())?;
             app.manage(Arc::new(state));
+            let chatgpt = ChatGptState::new(app.handle().clone()).map_err(|error| error.to_string())?;
+            app.manage(Arc::new(chatgpt));
             #[cfg(target_os = "linux")]
             if let Err(error) = desktop_identity::prepare(app.handle()) {
                 eprintln!("Could not install the zega launcher entry: {error}");
