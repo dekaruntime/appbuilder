@@ -1,0 +1,40 @@
+[package]
+name = "zega-native"
+version = "0.1.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+
+[workspace]
+
+[features]
+default = []
+compiler = ["deka-vm-experiment/compiler"]
+
+[dependencies]
+deka-vm-experiment = { git = "https://github.com/dekaruntime/deka", rev = "927ff0d412952a7cc470f0a00c1edc9d2387531a", features = ["gpu"] }
+deka_native_ui = { git = "https://github.com/dekaruntime/deka", rev = "fd8e705d9622e19bf19fd78ad963971c15925c2d", features = ["runtime-shaders"] }
+computer-index = { path = "../src-tauri/computer-index" }
+gpui = { version = "=0.2.2", features = ["runtime_shaders"] }
+image = { version = "0.25", default-features = false }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+unicode-segmentation = "1"
+async-channel = "2"
+fs2 = "0.4"
+tray-icon = "0.21"
+objc2 = "0.6"
+objc2-app-kit = { version = "0.3.2", features = ["NSApplication"] }
+objc2-foundation = { version = "0.3.2", features = ["NSString", "NSArray", "NSDictionary"] }
+
+[[bin]]
+name = "zega-native"
+path = "src/main.rs"
+test = false
+
+[profile.release]
+opt-level = "s"
+lto = true
+codegen-units = 1
+strip = true
+panic = "abort"

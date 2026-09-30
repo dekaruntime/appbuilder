@@ -1,0 +1,51 @@
+{
+  "name": "zega-native-search",
+  "version": "0.1.0",
+  "desktop": {
+    "productName": "Zega Native Search",
+    "identifier": "dev.zega.native-search-experiment",
+    "entry": "launcher.dsx",
+    "entryFunction": "Launcher",
+    "description": "Native DekaScript search launcher",
+    "icons": [
+      "../src-tauri/icons/icon.png"
+    ],
+    "resources": {
+      "deka.json": "deka.json"
+    }
+  },
+  "native": {
+    "shortcut": {
+      "key": "KeyZ",
+      "alt": true,
+      "control": true,
+      "shift": false,
+      "superKey": false
+    },
+    "indexDirectory": "/Volumes/Projects/codex/zega-desktop/.tmp/native-search-index",
+    "roots": [
+      {
+        "path": "/Applications",
+        "apps": true
+      },
+      {
+        "path": "/System/Applications",
+        "apps": true
+      },
+      {
+        "path": "/Volumes/Projects/codex/zega-desktop/native",
+        "apps": false
+      }
+    ],
+    "menu": [
+      {
+        "id": "search",
+        "label": "Search"
+      },
+      {
+        "id": "quit",
+        "label": "Quit native search"
+      }
+    ]
+  }
+}
