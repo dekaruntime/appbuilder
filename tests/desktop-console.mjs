@@ -114,6 +114,7 @@ try {
   const panelBackground = await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).backgroundColor);
   assert.match(panelBackground, /0, 0, 0, 0|transparent/, 'the native material must remain visible');
   assert.equal(await launcher.locator('.float-panel').evaluate(element => getComputedStyle(element).boxShadow), 'none', 'no clipped CSS shadow around the native panel');
+  assert.equal(await launcher.locator('.float-search').evaluate(element => getComputedStyle(element).borderRadius), '0px', 'the floating search input has square corners against the panel edges');
   for (const height of [340, 440]) {
     await launcher.setViewportSize({ width: 680, height });
     const footer = await launcher.locator('.lfoot').boundingBox();
