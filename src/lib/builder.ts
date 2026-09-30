@@ -42,3 +42,30 @@ export function extractHtml(answer: string): string {
   const end = text.search(/<\/html>/i);
   return end === -1 ? text : text.slice(0, end + '</html>'.length);
 }
+
+/**
+ * The preview frame's bridge. The frame is sandboxed without same-origin
+ * access, so the app talks to it by message: it reports its scroll position,
+ * restores the one it is handed when a new version loads, and swaps in
+ * streamed updates without reloading, so the reader's place survives both.
+ */
+export function withPreviewBridge(html: string, scrollY: number): string {
+  const bridge = `<script data-zega-preview>(() => {
+  addEventListener('load', () => scrollTo({ top: ${Math.round(scrollY)}, behavior: 'instant' }));
+  let timer;
+  addEventListener('scroll', () => { clearTimeout(timer); timer = setTimeout(() => parent.postMessage({ zegaScroll: scrollY }, '*'), 60); });
+  addEventListener('message', event => {
+    if (event.source !== parent || typeof event.data?.zegaHtml !== 'string') return;
+    const next = new DOMParser().parseFromString(event.data.zegaHtml, 'text/html');
+    const y = scrollY;
+    document.head.innerHTML = next.head.innerHTML;
+    document.body.innerHTML = next.body.innerHTML;
+    for (const { name, value } of next.body.attributes) document.body.setAttribute(name, value);
+    scrollTo({ top: y, behavior: 'instant' });
+  });
+})();</script>`;
+  const end = html.search(/<\/body>/i);
+  return end === -1 ? html + bridge : html.slice(0, end) + bridge + html.slice(end);
+}
+
+export const EMPTY_DOCUMENT = '<!doctype html><html><head><meta charset="utf-8"></head><body></body></html>';

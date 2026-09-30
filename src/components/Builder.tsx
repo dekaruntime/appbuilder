@@ -1,9 +1,9 @@
 'use client';
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import BuilderRail from './BuilderRail';
-import { BUILDER_INSTRUCTIONS, buildRequest, extractHtml } from '../lib/builder';
+import { BUILDER_INSTRUCTIONS, EMPTY_DOCUMENT, buildRequest, extractHtml, withPreviewBridge } from '../lib/builder';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
 import { RIXSE_INSTRUCTIONS, applyOp, editRequest, parseDocument, parseOp, serialize, takeLines } from '../lib/rixse-edit';
 import { formatMs, reportTiming, type Tokens } from '../lib/timing';
@@ -65,7 +65,28 @@ export default function Builder() {
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [versions.length, building?.ask]);
 
   const current = versions.find(v => v.n === shown) ?? null;
-  const frame = building ? preview : current?.html ?? '';
+  // The frame loads a document once per version (or once per build, from
+  // the version it starts from); streamed updates are posted into the live
+  // page instead of reloading it, which would jump back to the top.
+  const frameRef = useRef<HTMLIFrameElement>(null);
+  const frameScroll = useRef(0);
+  const buildBase = building ? versions.find(v => v.n === building.basedOn) ?? null : null;
+  const frameKey = building ? `build-from-${building.basedOn ?? 'nothing'}` : `v${current?.n ?? 'none'}`;
+  const frameDoc = useMemo(() => {
+    const html = building ? buildBase?.html ?? EMPTY_DOCUMENT : current?.html ?? '';
+    return html ? withPreviewBridge(html, frameScroll.current) : '';
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [frameKey]);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => {
+      if (event.source === frameRef.current?.contentWindow && typeof event.data?.zegaScroll === 'number') frameScroll.current = event.data.zegaScroll;
+    };
+    addEventListener('message', onMessage);
+    return () => removeEventListener('message', onMessage);
+  }, []);
+  useEffect(() => {
+    if (building && preview) frameRef.current?.contentWindow?.postMessage({ zegaHtml: preview }, '*');
+  }, [building, preview]);
 
   // One request to ChatGPT; resolves with its completion, or null when it failed.
   const request = async (question: string, instructions: string, onText: (text: string) => void): Promise<Done | null> => {
@@ -210,8 +231,8 @@ export default function Builder() {
       {building && <span className="bversions-live" role="status" aria-label={`Building v${versions.length + 1}`}>v{versions.length + 1}</span>}
     </nav>
     <section className="bpreview" aria-label="Design">
-      {frame
-        ? <iframe title={building ? 'Design in progress' : `Design v${current?.n}`} sandbox="allow-scripts" srcDoc={frame} />
+      {frameDoc && (building ? preview || buildBase : current)
+        ? <iframe ref={frameRef} title={building ? 'Design in progress' : `Design v${current?.n}`} sandbox="allow-scripts" srcDoc={frameDoc} />
         : <p className="bpreview-empty">{building ? 'Starting…' : 'Your design appears here.'}</p>}
     </section>
   </div>;
