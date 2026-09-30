@@ -363,3 +363,10 @@ p.bmsg-done { cursor: default; }
 .bpreview-empty { margin: 0; position: absolute; inset: 0; display: grid; place-items: center; color: var(--soft); font-size: 13px; }
 .builder ~ .timing-corner { left: 80px; }
 .builder:has(.brail[data-collapsed="false"]) ~ .timing-corner { left: 236px; }
+.bchat-row { flex-wrap: wrap; }
+.bchat-row small { order: 3; flex: 1 1 100%; white-space: normal; overflow: visible; }
+.bmode { display: inline-flex; border: 1px solid var(--edge); border-radius: 4px; overflow: hidden; }
+.bmode button { padding: 3px 8px; border: 0; background: transparent; color: var(--soft); font: 500 11.5px var(--mono); cursor: pointer; }
+.bmode button + button { border-left: 1px solid var(--edge); }
+.bmode button[aria-pressed="true"] { background: var(--ink); color: var(--win); }
+.bchat-go { margin-left: auto; }

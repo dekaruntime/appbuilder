@@ -5,10 +5,23 @@ import { listen } from '@tauri-apps/api/event';
 import BuilderRail from './BuilderRail';
 import { BUILDER_INSTRUCTIONS, buildRequest, extractHtml } from '../lib/builder';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
+import { RIXSE_INSTRUCTIONS, applyOp, editRequest, parseDocument, parseOp, serialize, takeLines } from '../lib/rixse-edit';
 import { formatMs, reportTiming, type Tokens } from '../lib/timing';
 
-type Version = { n: number; ask: string; html: string; basedOn: number | null; ms: number; tokens: Tokens | null };
-type Building = { ask: string; basedOn: number | null; html: string };
+type Mode = 'full' | 'rixse';
+// How a version was made: a full rewrite, rixse edit ops, or rixse asking
+// for a full rewrite because the change rebuilt most of the page.
+type Made = { how: 'full' } | { how: 'rixse'; ops: number; missed: number } | { how: 'escalated'; reason: string };
+type Version = { n: number; ask: string; html: string; basedOn: number | null; ms: number; tokens: Tokens | null; made: Made };
+type Building = { ask: string; basedOn: number | null; mode: Mode; ops: number };
+type Done = Extract<AskEvent, { kind: 'completed' }>;
+
+const madeLabel = (made: Made) => made.how === 'full' ? 'full rewrite'
+  : made.how === 'escalated' ? 'rixse → full rewrite'
+  : `rixse · ${made.ops} ${made.ops === 1 ? 'op' : 'ops'}${made.missed ? ` (${made.missed} missed)` : ''}`;
+
+const addTokens = (a: Tokens | null, b: Tokens | null): Tokens | null => !a ? b : !b ? a
+  : { input: a.input + b.input, cached_input: a.cached_input + b.cached_input, output: a.output + b.output, reasoning: a.reasoning + b.reasoning };
 
 const EXAMPLES = [
   'A booking page for a barber shop in Lisbon: services with prices, opening hours, a book button',
@@ -29,6 +42,7 @@ export default function Builder() {
   const [building, setBuilding] = useState<Building | null>(null);
   const [preview, setPreview] = useState('');
   const [ask, setAsk] = useState('');
+  const [mode, setMode] = useState<Mode>('rixse');
   const [failure, setFailure] = useState<string | null>(null);
   const answer = useRef('');
   const lastDraw = useRef(0);
@@ -53,33 +67,97 @@ export default function Builder() {
   const current = versions.find(v => v.n === shown) ?? null;
   const frame = building ? preview : current?.html ?? '';
 
-  const build = async (text: string) => {
-    const request = text.trim();
-    if (!request || !model || building) return;
-    const base = current;
-    const n = versions.length + 1;
-    answer.current = '';
-    lastDraw.current = 0;
-    setAsk(''); setFailure(null); setPreview('');
-    setBuilding({ ask: request, basedOn: base?.n ?? null, html: '' });
+  // One request to ChatGPT; resolves with its completion, or null when it failed.
+  const request = async (question: string, instructions: string, onText: (text: string) => void): Promise<Done | null> => {
+    let done: Done | null = null;
     const channel = new Channel<AskEvent>();
     channel.onmessage = event => {
-      if (event.kind === 'delta') {
-        answer.current += event.text;
-        const now = performance.now();
-        if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(extractHtml(answer.current)); }
-      } else if (event.kind === 'failed') {
-        setFailure(event.message);
-      } else {
-        const html = extractHtml(answer.current);
-        setVersions(list => [...list, { n, ask: request, html, basedOn: base?.n ?? null, ms: event.elapsed_ms, tokens: event.tokens }]);
-        setShown(n);
-        reportTiming({ label: 'Built', ms: event.elapsed_ms, tokens: event.tokens });
-      }
+      if (event.kind === 'delta') onText(event.text);
+      else if (event.kind === 'failed') setFailure(event.message);
+      else done = event;
     };
-    try { await invoke('chatgpt_ask', { question: buildRequest(request, base?.html ?? null), model, instructions: BUILDER_INSTRUCTIONS, onEvent: channel }); }
-    catch (reason) { setFailure(String(reason)); }
-    finally { setBuilding(null); }
+    try { await invoke('chatgpt_ask', { question, model, instructions, onEvent: channel }); }
+    catch (reason) { setFailure(String(reason)); return null; }
+    return done;
+  };
+
+  const fullPass = async (ask: string, base: Version | null) => {
+    answer.current = '';
+    lastDraw.current = 0;
+    setPreview(base?.html ?? '');
+    const done = await request(buildRequest(ask, base?.html ?? null), BUILDER_INSTRUCTIONS, text => {
+      answer.current += text;
+      const now = performance.now();
+      if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(extractHtml(answer.current)); }
+    });
+    return done && { html: extractHtml(answer.current), done };
+  };
+
+  // rixse: the whole current document goes in, edit ops come back one per
+  // line and are applied to the page as they arrive.
+  const rixsePass = async (ask: string, base: Version) => {
+    const doc = parseDocument(base.html);
+    let buffer = '';
+    let ops = 0;
+    let missed = 0;
+    let full: string | null = null;
+    lastDraw.current = 0;
+    setPreview(base.html);
+    const apply = (lines: string[]) => {
+      for (const line of lines) {
+        const op = parseOp(line);
+        if (!op) continue;
+        if (op.op === 'full') { full = op.reason; continue; }
+        ops += 1;
+        if (!applyOp(doc, op)) missed += 1;
+      }
+      setBuilding(state => state && { ...state, ops });
+    };
+    const done = await request(editRequest(ask, base.html), RIXSE_INSTRUCTIONS, text => {
+      const taken = takeLines(buffer + text);
+      buffer = taken.rest;
+      if (!taken.lines.length) return;
+      apply(taken.lines);
+      const now = performance.now();
+      if (now - lastDraw.current > PREVIEW_EVERY_MS / 2) { lastDraw.current = now; setPreview(serialize(doc)); }
+    });
+    if (!done) return null;
+    apply(takeLines(`${buffer}\n`).lines);
+    return { html: serialize(doc), done, ops, missed, full: full as string | null };
+  };
+
+  const build = async (text: string) => {
+    const ask = text.trim();
+    if (!ask || !model || building) return;
+    const base = current;
+    const n = versions.length + 1;
+    const how: Mode = base ? mode : 'full';
+    setAsk(''); setFailure(null);
+    setBuilding({ ask, basedOn: base?.n ?? null, mode: how, ops: 0 });
+    try {
+      let version: Omit<Version, 'n' | 'ask' | 'basedOn'> | null = null;
+      if (how === 'rixse' && base) {
+        const edited = await rixsePass(ask, base);
+        if (edited?.full) {
+          setBuilding(state => state && { ...state, mode: 'full' });
+          const rewritten = await fullPass(ask, base);
+          if (rewritten) version = { html: rewritten.html, ms: edited.done.elapsed_ms + rewritten.done.elapsed_ms, tokens: addTokens(edited.done.tokens, rewritten.done.tokens), made: { how: 'escalated', reason: edited.full } };
+        } else if (edited) {
+          version = { html: edited.html, ms: edited.done.elapsed_ms, tokens: edited.done.tokens, made: { how: 'rixse', ops: edited.ops, missed: edited.missed } };
+        }
+      } else {
+        const written = await fullPass(ask, base);
+        if (written) version = { html: written.html, ms: written.done.elapsed_ms, tokens: written.done.tokens, made: { how: 'full' } };
+      }
+      if (version) {
+        const made = version;
+        setVersions(list => [...list, { n, ask, basedOn: base?.n ?? null, ...made }]);
+        setShown(n);
+        reportTiming({ label: made.made.how === 'rixse' ? 'Edited' : 'Built', ms: made.ms, tokens: made.tokens });
+      }
+    } finally {
+      setBuilding(null);
+    }
   };
 
   const chat = !view ? null : !signedIn ? <div className="bchat-empty">
@@ -98,12 +176,12 @@ export default function Builder() {
       {versions.map(v => <div key={v.n} className="bmsg">
         <p className="bmsg-ask">{v.ask}</p>
         <button type="button" className="bmsg-done" aria-pressed={shown === v.n} onClick={() => setShown(v.n)}>
-          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {formatMs(v.ms)}{v.tokens ? ` · ${(v.tokens.input + v.tokens.output).toLocaleString()} tokens` : ''}
+          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {madeLabel(v.made)} · {formatMs(v.ms)}{v.tokens ? ` · ${(v.tokens.input + v.tokens.output).toLocaleString()} tokens` : ''}
         </button>
       </div>)}
       {building && <div className="bmsg">
         <p className="bmsg-ask">{building.ask}</p>
-        <p className="bmsg-done" role="status">Building v{versions.length + 1}{building.basedOn ? ` from v${building.basedOn}` : ''}…</p>
+        <p className="bmsg-done" role="status">{building.mode === 'rixse' ? 'Editing' : 'Building'} v{versions.length + 1}{building.basedOn ? ` from v${building.basedOn}` : ''}{building.mode === 'rixse' ? ` with rixse · ${building.ops} ${building.ops === 1 ? 'op' : 'ops'}` : ''}…</p>
       </div>}
       {failure && <p className="bmsg-fail" role="alert">{failure}</p>}
     </div>
@@ -115,6 +193,9 @@ export default function Builder() {
         <select aria-label="Model" value={model} onChange={event => setModel(event.target.value)} disabled={!models.length}>
           {models.map(m => <option key={m.slug} value={m.slug}>{m.display_name}</option>)}
         </select>
+        {current && <span className="bmode" role="group" aria-label="How changes are made">
+          {(['rixse', 'full'] as const).map(m => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} title={m === 'rixse' ? 'Edit the page in place' : 'Rewrite the whole page'}>{m === 'rixse' ? 'rixse edit' : 'Full rewrite'}</button>)}
+        </span>}
         <small>Using ChatGPT plan · <button type="button" className="chatgpt-link" onClick={openUsage}>Usage</button></small>
         <button type="submit" className="bchat-go" disabled={!!building || !ask.trim() || !model}>{building ? 'Building…' : 'Build'}</button>
       </div>
