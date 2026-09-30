@@ -192,6 +192,9 @@ body { padding: 0; }
 .window { height: 100%; min-height: 0; border-radius: 0; box-shadow: none; }
 .app { min-height: 0; height: calc(100% - 38px); }
 .content { min-width: 0; overflow: auto; }
+/* Settings has no rail: its page scrolls in a container the height of the
+   window below the title bar, with the scroll bar at the window's edge. */
+.settings-scroll { height: calc(100% - 38px); overflow: auto; }
 .lights button { width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; }
 .lights button i { width: 12px; height: 12px; }
 .signed-in { display: flex; align-items: center; gap: 8px; font-size: 12px; }

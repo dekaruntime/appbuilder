@@ -183,6 +183,20 @@ try {
   assert.deepEqual(launcherErrors, [], `launcher console errors: ${launcherErrors.join(' | ')}`);
   await launcher.close();
   assert.deepEqual(errors, [], `browser console errors during local-data fixture: ${errors.join(' | ')}`);
+
+  // Settings in a short window: every section must be reachable the way a
+  // person scrolls, with the wheel (desktop#35: the page was cut off below
+  // the window, and the wheel did nothing).
+  const settings = await browser.newPage({ viewport: { width: 900, height: 420 } });
+  await settings.goto('http://localhost:1421/settings/', { waitUntil: 'networkidle' });
+  const last = settings.locator('.settings-page > :last-child');
+  const bottom = async () => { const box = await last.boundingBox(); return box ? box.y + box.height : Infinity; };
+  assert.ok(await bottom() > 420, 'fixture: the settings page is taller than the window');
+  await settings.mouse.move(450, 300);
+  for (let step = 0; step < 10; step += 1) await settings.mouse.wheel(0, 400);
+  await delay(300);
+  assert.ok(await bottom() <= 421, `the wheel scrolls the last settings section into the window (its bottom is at ${await bottom()}px in a 420px window)`);
+  await settings.close();
 } finally {
   await browser?.close();
   if (server.exitCode === null) {

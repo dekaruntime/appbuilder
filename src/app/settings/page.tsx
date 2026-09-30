@@ -7,6 +7,7 @@ import UpdateSettings from '../../components/UpdateSettings';
 export default function SettingsPage() {
   return <main className="stage"><div className="window">
     <AppTitlebar />
+    <div className="settings-scroll">
     <section className="settings-page" aria-labelledby="settings-title">
       <a className="settings-back" href="/">← Back to search</a>
       <h1 id="settings-title">Settings</h1>
@@ -18,5 +19,6 @@ export default function SettingsPage() {
       <IndexSettings />
       <UpdateSettings />
     </section>
+    </div>
   </div></main>;
 }
