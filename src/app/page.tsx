@@ -1,4 +1,5 @@
 'use client';
+import TimingCorner from '../components/TimingCorner';
 
 import ShortcutHint from '../components/ShortcutHint';
 import AppTitlebar from '../components/AppTitlebar';
@@ -90,5 +91,6 @@ export default function Home() {
     </nav><div className="content"><section className="screen landing"><div className="hello"><h2>{greeting}</h2><p>Everything on this computer, in one graph. Nothing leaves it.</p></div>{searchBox()}
       {screen === 'landing' ? <div className="shelves"><div className="shelf"><h3>Recent files</h3><div className="rows">{files === null ? <div className="skeleton" aria-label="Loading recent files" /> : visibleFiles.length ? visibleFiles.map(file => <button className="row file-row" key={file.path} type="button" onDoubleClick={() => void invoke('index_open_result', { key: file.key })}><span className={`fi ${fileClass(file.fileType)}`}>{file.fileType.slice(0, 3).toUpperCase()}</span><span><b>{file.name}</b><small>{file.location}</small></span><span className="when">{file.modifiedLabel}</span></button>) : <p className="empty">No recent files yet.</p>}</div></div>{photoShelf}<div className="quick" aria-label="Settings">{settings.map(pane => <button key={pane.bundleId} type="button" onClick={() => openSettings(pane)}><span aria-hidden="true">{pane.icon}</span>{pane.label}</button>)}</div></div> : <GraphResults {...graphSearch} photoPreviews={photoAccess === 'ready'} />}
     </section></div></div>
+    <TimingCorner />
   </div></main>;
 }

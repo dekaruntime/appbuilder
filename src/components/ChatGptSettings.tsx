@@ -2,12 +2,15 @@
 import { useEffect, useRef, useState } from 'react';
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
 
 type ChatGptView = { status: 'signed_out' | 'pending' | 'signed_in'; email: string | null; error: string | null };
 type Model = { slug: string; display_name: string };
+type Totals = { answers: number; input: number; output: number };
+type Usage = { today: Totals; last_7_days: Totals; all_time: Totals };
 type AskEvent =
   | { kind: 'delta'; text: string }
-  | { kind: 'completed' }
+  | { kind: 'completed'; tokens: Tokens | null; elapsed_ms: number; first_word_ms: number | null }
   | { kind: 'failed'; code: string | null; message: string; usage_limited: boolean };
 
 // Sign in with ChatGPT (developers.openai.com/siwc): answers run on the
@@ -26,6 +29,9 @@ export default function ChatGptSettings() {
   const [answer, setAnswer] = useState('');
   const [asking, setAsking] = useState(false);
   const [failure, setFailure] = useState<Extract<AskEvent, { kind: 'failed' }> | null>(null);
+  const [done, setDone] = useState<Extract<AskEvent, { kind: 'completed' }> | null>(null);
+  const [usage, setUsage] = useState<Usage | null>(null);
+  const refreshUsage = () => { void invoke<Usage>('chatgpt_usage').then(setUsage).catch(() => {}); };
   const signedIn = view?.status === 'signed_in';
   const answerId = useRef(0);
 
@@ -39,6 +45,7 @@ export default function ChatGptSettings() {
     const stop = listen('chatgpt-changed', () => void refresh());
     return () => { void stop.then(unlisten => unlisten()).catch(() => {}); };
   }, []);
+  useEffect(() => { if (signedIn) refreshUsage(); }, [signedIn]);
   useEffect(() => {
     if (!signedIn) { setModels([]); return; }
     invoke<Model[]>('chatgpt_models')
@@ -53,12 +60,13 @@ export default function ChatGptSettings() {
   const ask = async () => {
     if (!question.trim() || !model || asking) return;
     const id = ++answerId.current;
-    setAsking(true); setAnswer(''); setFailure(null); setError(null);
+    setAsking(true); setAnswer(''); setFailure(null); setDone(null); setError(null);
     const channel = new Channel<AskEvent>();
     channel.onmessage = event => {
       if (id !== answerId.current) return;
       if (event.kind === 'delta') setAnswer(text => text + event.text);
       else if (event.kind === 'failed') setFailure(event);
+      else { setDone(event); reportTiming({ label: 'Answered', ms: event.elapsed_ms, tokens: event.tokens }); refreshUsage(); }
     };
     try { await invoke('chatgpt_ask', { question, model, onEvent: channel }); }
     catch (reason) { setError(String(reason)); }
@@ -89,6 +97,8 @@ export default function ChatGptSettings() {
         </div>
       </form>
       {answer && <div className="chatgpt-answer" aria-live="polite">{answer}</div>}
+      {done && <p className="chatgpt-meta">Answered in {formatMs(done.elapsed_ms)}{done.first_word_ms !== null ? ` (first words in ${formatMs(done.first_word_ms)})` : ''}{done.tokens ? ` · ${formatTokens(done.tokens)}` : ''}</p>}
+      {usage && <p className="chatgpt-meta">Tokens used from your plan on this computer: today {(usage.today.input + usage.today.output).toLocaleString()} · last 7 days {(usage.last_7_days.input + usage.last_7_days.output).toLocaleString()} · all time {(usage.all_time.input + usage.all_time.output).toLocaleString()} across {usage.all_time.answers.toLocaleString()} {usage.all_time.answers === 1 ? 'answer' : 'answers'}. ChatGPT shows your plan's remaining allowance as a percentage in <button type="button" className="chatgpt-link" onClick={openUsage}>usage settings</button>.</p>}
       {failure && <p role="alert">{failure.message}{failure.usage_limited && <> <button type="button" className="chatgpt-continue" onClick={openUsage}>Manage usage</button></>}</p>}
     </>}
     {(error || view?.error) && <p role="alert">{error || view?.error}</p>}

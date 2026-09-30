@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
+import { reportTiming } from './timing';
 
 export type GraphResult = { id: number; key: string; kind: 'actions' | 'apps' | 'files' | 'photos'; name: string; path: string; offline: boolean; detail: string };
 export type IndexStatus = { itemsIndexed: number; lastScan: number | null; scanning: boolean; paused: boolean; error: string | null; skipped: number; warnings: string[] };
@@ -22,9 +23,13 @@ export function useGraphSearch(query: string) {
     let sequence = 0;
     const refresh = async () => {
       const request = ++sequence;
+      const started = performance.now();
       try {
         const rows = await invoke<GraphResult[]>('index_search', { query });
         if (alive && request === sequence) { setResults(rows); setError(null); }
+        // Time what the user asked for: the first search for a typed query,
+        // not the background refreshes every 2 s or the recent-files shelf.
+        if (alive && request === 1 && query.trim()) reportTiming({ label: `${rows.length.toLocaleString()} ${rows.length === 1 ? 'result' : 'results'}`, ms: performance.now() - started });
       } catch (error) {
         // Native settings remain useful when the file graph cannot be opened.
         const panes = await invoke<{ label: string; bundleId: string }[]>('local_settings_panes').catch(() => []);

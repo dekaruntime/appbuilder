@@ -1,4 +1,5 @@
 'use client';
+import TimingCorner from '../../components/TimingCorner';
 import AppTitlebar from '../../components/AppTitlebar';
 import ChatGptSettings from '../../components/ChatGptSettings';
 import IndexSettings from '../../components/IndexSettings';
@@ -20,5 +21,6 @@ export default function SettingsPage() {
       <IndexSettings />
       <UpdateSettings />
     </section>
+    <TimingCorner />
   </div></main>;
 }

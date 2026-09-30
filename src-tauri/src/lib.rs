@@ -69,6 +69,7 @@ pub fn run() {
             chatgpt::chatgpt_disconnect,
             chatgpt::chatgpt_models,
             chatgpt::chatgpt_ask,
+            chatgpt::chatgpt_usage,
             local::local_recent_files,
             local::local_recent_photos,
             local::local_pictures_access_granted,

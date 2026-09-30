@@ -41,6 +41,7 @@ plist = "1"
 tauri-plugin-global-shortcut = "2"
 tauri-plugin-dialog = "2"
 tokio = { version = "1", features = ["sync", "macros", "time"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "std"] }
 
 [target.'cfg(target_os = "macos")'.dependencies]
 objc2-foundation = { version = "0.3.2", features = ["NSPathUtilities", "NSString", "NSProcessInfo"] }

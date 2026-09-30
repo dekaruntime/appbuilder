@@ -7,12 +7,16 @@
 //! keychain and the one-hour access token only in memory; the file beside
 //! the app's settings holds nothing secret. Only the question the user types
 //! is sent. Nothing from the computer graph leaves the machine.
+//!
+//! Every answer's token counts (from `response.completed`) are kept on this
+//! Mac as daily totals, so people can see how zega uses their plan.
 
 use crate::loopback;
 use base64::{engine::general_purpose::URL_SAFE_NO_PAD, Engine};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::{
+    collections::BTreeMap,
     fs,
     io::BufRead,
     path::PathBuf,
@@ -38,6 +42,10 @@ const CALLBACK_PATH: &str = "/auth/callback";
 const KEYCHAIN_SERVICE: &str = "earth.zega.desktop";
 const KEYCHAIN_USER: &str = "chatgpt-refresh-token";
 const SAVED_FILE: &str = "chatgpt.json";
+const USAGE_FILE: &str = "chatgpt-usage.json";
+// Daily totals kept for the "last 7 days" view; older days fold into
+// all-time only.
+const USAGE_DAYS_KEPT: i64 = 60;
 const CHANGED: &str = "chatgpt-changed";
 const MAX_QUESTION: usize = 8000;
 // Refresh a little early so a request never starts on a token about to lapse.
@@ -79,12 +87,99 @@ pub struct Model {
     pub display_name: String,
 }
 
+/// Tokens one answer used, as `response.completed` reports them.
+#[derive(Clone, Copy, Default, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(default)]
+pub struct Tokens {
+    pub input: u64,
+    /// Part of `input` served from OpenAI's prompt cache.
+    pub cached_input: u64,
+    pub output: u64,
+    /// Part of `output` spent on reasoning the user doesn't see.
+    pub reasoning: u64,
+}
+
+impl Tokens {
+    fn from_usage(usage: &Value) -> Option<Self> {
+        Some(Self {
+            input: usage["input_tokens"].as_u64()?,
+            cached_input: usage["input_tokens_details"]["cached_tokens"].as_u64().unwrap_or(0),
+            output: usage["output_tokens"].as_u64()?,
+            reasoning: usage["output_tokens_details"]["reasoning_tokens"].as_u64().unwrap_or(0),
+        })
+    }
+}
+
+/// Answers and tokens over some period.
+#[derive(Clone, Copy, Default, Serialize, Deserialize, Debug, PartialEq)]
+#[serde(default)]
+pub struct Totals {
+    pub answers: u64,
+    pub input: u64,
+    pub output: u64,
+}
+
+impl Totals {
+    fn add(&mut self, tokens: &Tokens) {
+        self.answers += 1;
+        self.input += tokens.input;
+        self.output += tokens.output;
+    }
+}
+
+/// Totals persisted on this Mac. Days are local dates (YYYY-MM-DD).
+#[derive(Default, Serialize, Deserialize)]
+#[serde(default)]
+struct UsageLog {
+    days: BTreeMap<String, Totals>,
+    all_time: Totals,
+}
+
+impl UsageLog {
+    fn record(&mut self, day: chrono::NaiveDate, tokens: &Tokens) {
+        self.days.entry(day.to_string()).or_default().add(tokens);
+        self.all_time.add(tokens);
+        let oldest = (day - chrono::Duration::days(USAGE_DAYS_KEPT)).to_string();
+        self.days.retain(|kept, _| *kept > oldest);
+    }
+
+    fn summary(&self, today: chrono::NaiveDate) -> UsageSummary {
+        let week_start = (today - chrono::Duration::days(6)).to_string();
+        let today = today.to_string();
+        let mut last_7_days = Totals::default();
+        for (_, totals) in self.days.iter().filter(|(day, _)| **day >= week_start && **day <= today) {
+            last_7_days.answers += totals.answers;
+            last_7_days.input += totals.input;
+            last_7_days.output += totals.output;
+        }
+        UsageSummary {
+            today: self.days.get(&today).copied().unwrap_or_default(),
+            last_7_days,
+            all_time: self.all_time,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Serialize, Debug, PartialEq)]
+pub struct UsageSummary {
+    pub today: Totals,
+    pub last_7_days: Totals,
+    pub all_time: Totals,
+}
+
 /// One step of a streamed answer, sent to the webview over a channel.
 #[derive(Clone, Serialize, Debug, PartialEq)]
 #[serde(tag = "kind", rename_all = "snake_case")]
 pub enum AskEvent {
     Delta { text: String },
-    Completed,
+    Completed {
+        /// Absent only if OpenAI leaves usage out of the final event.
+        tokens: Option<Tokens>,
+        /// From sending the question to the answer's last word.
+        elapsed_ms: u64,
+        /// From sending the question to its first word.
+        first_word_ms: Option<u64>,
+    },
     Failed {
         code: Option<String>,
         message: String,
@@ -265,19 +360,25 @@ fn failure(code: Option<&str>, message: Option<&str>) -> AskEvent {
 
 /// Read a Responses API event stream, forwarding text as it arrives. An
 /// answer counts only once `response.completed` is seen.
-fn read_stream(reader: impl BufRead, mut send: impl FnMut(AskEvent)) -> Result<()> {
+fn read_stream(reader: impl BufRead, started: Instant, mut send: impl FnMut(AskEvent)) -> Result<()> {
     let mut data = String::new();
-    let dispatch = |data: &str, send: &mut dyn FnMut(AskEvent)| -> Option<bool> {
+    let mut first_word: Option<Duration> = None;
+    let mut dispatch = |data: &str, send: &mut dyn FnMut(AskEvent)| -> Option<bool> {
         let event: Value = serde_json::from_str(data).ok()?;
         match event["type"].as_str()? {
             "response.output_text.delta" => {
+                first_word.get_or_insert_with(|| started.elapsed());
                 send(AskEvent::Delta {
                     text: event["delta"].as_str()?.to_owned(),
                 });
                 Some(false)
             }
             "response.completed" => {
-                send(AskEvent::Completed);
+                send(AskEvent::Completed {
+                    tokens: Tokens::from_usage(&event["response"]["usage"]),
+                    elapsed_ms: started.elapsed().as_millis() as u64,
+                    first_word_ms: first_word.map(|d| d.as_millis() as u64),
+                });
                 Some(true)
             }
             "response.failed" => {
@@ -674,6 +775,7 @@ impl ChatGptState {
             "store": false,
             "stream": true,
         });
+        let started = Instant::now();
         let mut forced = false;
         let response = loop {
             let token = self.access_token(forced)?;
@@ -698,7 +800,37 @@ impl ChatGptState {
             send(failure(error["code"].as_str(), error["message"].as_str()));
             return Ok(());
         }
-        read_stream(std::io::BufReader::new(response), send)
+        read_stream(std::io::BufReader::new(response), started, |event| {
+            if let AskEvent::Completed { tokens: Some(tokens), .. } = &event {
+                // Counting must never cost the user their answer.
+                let _ = self.record_usage(tokens);
+            }
+            send(event);
+        })
+    }
+
+    fn usage_path(&self) -> Result<PathBuf> {
+        Ok(self.saved_path()?.with_file_name(USAGE_FILE))
+    }
+
+    fn usage_log(&self) -> UsageLog {
+        self.usage_path()
+            .ok()
+            .and_then(|path| fs::read_to_string(path).ok())
+            .and_then(|text| serde_json::from_str(&text).ok())
+            .unwrap_or_default()
+    }
+
+    fn record_usage(&self, tokens: &Tokens) -> Result<()> {
+        let _inner = self.inner.lock().unwrap();
+        let mut log = self.usage_log();
+        log.record(chrono::Local::now().date_naive(), tokens);
+        let text = serde_json::to_string_pretty(&log).map_err(|_| "Could not save usage.".to_string())?;
+        fs::write(self.usage_path()?, text).map_err(|_| "Could not save usage.".to_string())
+    }
+
+    pub fn usage(&self) -> UsageSummary {
+        self.usage_log().summary(chrono::Local::now().date_naive())
     }
 }
 
@@ -733,6 +865,11 @@ pub async fn chatgpt_models(state: State<'_, Arc<ChatGptState>>) -> Result<Vec<M
     tauri::async_runtime::spawn_blocking(move || state.models())
         .await
         .map_err(|_| "Could not load ChatGPT's models.".to_string())?
+}
+
+#[tauri::command]
+pub fn chatgpt_usage(state: State<'_, Arc<ChatGptState>>) -> UsageSummary {
+    state.usage()
 }
 
 #[tauri::command]
@@ -822,7 +959,7 @@ mod tests {
 
     fn stream(text: &str) -> Vec<AskEvent> {
         let mut events = Vec::new();
-        read_stream(std::io::Cursor::new(text.to_owned()), |event| events.push(event)).unwrap();
+        read_stream(std::io::Cursor::new(text.to_owned()), Instant::now(), |event| events.push(event)).unwrap();
         events
     }
 
@@ -832,17 +969,31 @@ mod tests {
             "event: response.created\ndata: {\"type\":\"response.created\"}\n\n",
             "event: response.output_text.delta\ndata: {\"type\":\"response.output_text.delta\",\"delta\":\"Hel\"}\n\n",
             "data: {\"type\":\"response.output_text.delta\",\"delta\":\"lo\"}\n\n",
-            "data: {\"type\":\"response.completed\"}\n\n",
+            "data: {\"type\":\"response.completed\",\"response\":{\"usage\":{\"input_tokens\":120,\"input_tokens_details\":{\"cached_tokens\":100},\"output_tokens\":30,\"output_tokens_details\":{\"reasoning_tokens\":12},\"total_tokens\":150}}}\n\n",
             "data: {\"type\":\"response.output_text.delta\",\"delta\":\"after\"}\n\n",
         ));
-        assert_eq!(
-            events,
-            [
-                AskEvent::Delta { text: "Hel".into() },
-                AskEvent::Delta { text: "lo".into() },
-                AskEvent::Completed
-            ]
-        );
+        assert_eq!(events[..2], [AskEvent::Delta { text: "Hel".into() }, AskEvent::Delta { text: "lo".into() }]);
+        let [_, _, AskEvent::Completed { tokens, first_word_ms, .. }] = &events[..] else {
+            panic!("expected two deltas then completed, got {events:?}");
+        };
+        assert_eq!(*tokens, Some(Tokens { input: 120, cached_input: 100, output: 30, reasoning: 12 }));
+        assert!(first_word_ms.is_some());
+    }
+
+    #[test]
+    fn usage_totals_roll_up_by_day_and_forget_old_days() {
+        let day = |d: &str| chrono::NaiveDate::parse_from_str(d, "%Y-%m-%d").unwrap();
+        let tokens = Tokens { input: 100, output: 20, ..Tokens::default() };
+        let mut log = UsageLog::default();
+        log.record(day("2026-07-01"), &tokens);
+        log.record(day("2026-09-24"), &tokens);
+        log.record(day("2026-09-29"), &tokens);
+        log.record(day("2026-09-29"), &tokens);
+        let summary = log.summary(day("2026-09-29"));
+        assert_eq!(summary.today, Totals { answers: 2, input: 200, output: 40 });
+        assert_eq!(summary.last_7_days, Totals { answers: 3, input: 300, output: 60 });
+        assert_eq!(summary.all_time, Totals { answers: 4, input: 400, output: 80 });
+        assert!(!log.days.contains_key("2026-07-01"), "days past the window fold into all-time only");
     }
 
     #[test]
