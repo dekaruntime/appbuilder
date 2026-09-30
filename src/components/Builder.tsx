@@ -13,12 +13,19 @@ type Mode = 'full' | 'rixse';
 // for a full rewrite because the change rebuilt most of the page.
 type Made = { how: 'full' } | { how: 'rixse'; ops: number; missed: number } | { how: 'escalated'; reason: string };
 type Version = { n: number; ask: string; html: string; basedOn: number | null; ms: number; tokens: Tokens | null; made: Made };
-type Building = { ask: string; basedOn: number | null; mode: Mode; ops: number };
+// "thinking" until the first word of the answer arrives (reasoning models can
+// think for minutes), then "writing".
+type Building = { ask: string; basedOn: number | null; mode: Mode; ops: number; started: number; writing: boolean };
 type Done = Extract<AskEvent, { kind: 'completed' }>;
 
 const madeLabel = (made: Made) => made.how === 'full' ? 'full rewrite'
   : made.how === 'escalated' ? 'rixse → full rewrite'
   : `rixse · ${made.ops} ${made.ops === 1 ? 'op' : 'ops'}${made.missed ? ` (${made.missed} missed)` : ''}`;
+
+const elapsed = (started: number) => {
+  const seconds = Math.floor((performance.now() - started) / 1000);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+};
 
 const addTokens = (a: Tokens | null, b: Tokens | null): Tokens | null => !a ? b : !b ? a
   : { input: a.input + b.input, cached_input: a.cached_input + b.cached_input, output: a.output + b.output, reasoning: a.reasoning + b.reasoning };
@@ -43,6 +50,7 @@ export default function Builder() {
   const [preview, setPreview] = useState('');
   const [ask, setAsk] = useState('');
   const [mode, setMode] = useState<Mode>('rixse');
+  const [, setTick] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
   const answer = useRef('');
   // One prompt-cache key per design session: its requests share an opening
@@ -65,6 +73,11 @@ export default function Builder() {
       .then(list => { setModels(list); setModel(current => list.some(m => m.slug === current) ? current : list[0]?.slug ?? ''); })
       .catch(reason => setFailure(String(reason)));
   }, [signedIn]);
+  useEffect(() => {
+    if (!building) return;
+    const timer = setInterval(() => setTick(tick => tick + 1), 1000);
+    return () => clearInterval(timer);
+  }, [building !== null]);
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [versions.length, building?.ask]);
 
   const current = versions.find(v => v.n === shown) ?? null;
@@ -82,12 +95,17 @@ export default function Builder() {
   }, [frameKey]);
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
-      if (event.source === frameRef.current?.contentWindow && typeof event.data?.zegaScroll === 'number') frameScroll.current = event.data.zegaScroll;
+      if (event.source !== frameRef.current?.contentWindow) return;
+      if (typeof event.data?.zegaScroll === 'number') frameScroll.current = event.data.zegaScroll;
+      // A frame that loaded after the last update was posted asks for it again.
+      if (event.data?.zegaReady && latestPreview.current) frameRef.current?.contentWindow?.postMessage({ zegaHtml: latestPreview.current }, '*');
     };
     addEventListener('message', onMessage);
     return () => removeEventListener('message', onMessage);
   }, []);
+  const latestPreview = useRef('');
   useEffect(() => {
+    latestPreview.current = building ? preview : '';
     if (building && preview) frameRef.current?.contentWindow?.postMessage({ zegaHtml: preview }, '*');
   }, [building, preview]);
 
@@ -96,7 +114,7 @@ export default function Builder() {
     let done: Done | null = null;
     const channel = new Channel<AskEvent>();
     channel.onmessage = event => {
-      if (event.kind === 'delta') onText(event.text);
+      if (event.kind === 'delta') { setBuilding(state => state && !state.writing ? { ...state, writing: true } : state); onText(event.text); }
       else if (event.kind === 'failed') setFailure(event.message);
       else done = event;
     };
@@ -158,13 +176,13 @@ export default function Builder() {
     const n = versions.length + 1;
     const how: Mode = base ? mode : 'full';
     setAsk(''); setFailure(null);
-    setBuilding({ ask, basedOn: base?.n ?? null, mode: how, ops: 0 });
+    setBuilding({ ask, basedOn: base?.n ?? null, mode: how, ops: 0, started: performance.now(), writing: false });
     try {
       let version: Omit<Version, 'n' | 'ask' | 'basedOn'> | null = null;
       if (how === 'rixse' && base) {
         const edited = await rixsePass(ask, base);
         if (edited?.full) {
-          setBuilding(state => state && { ...state, mode: 'full' });
+          setBuilding(state => state && { ...state, mode: 'full', writing: false });
           const rewritten = await fullPass(ask, base);
           if (rewritten) version = { html: rewritten.html, ms: edited.done.elapsed_ms + rewritten.done.elapsed_ms, tokens: addTokens(edited.done.tokens, rewritten.done.tokens), made: { how: 'escalated', reason: edited.full } };
         } else if (edited) {
@@ -201,12 +219,12 @@ export default function Builder() {
       {versions.map(v => <div key={v.n} className="bmsg">
         <p className="bmsg-ask">{v.ask}</p>
         <button type="button" className="bmsg-done" aria-pressed={shown === v.n} onClick={() => setShown(v.n)}>
-          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {madeLabel(v.made)} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}
+          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}
         </button>
       </div>)}
       {building && <div className="bmsg">
         <p className="bmsg-ask">{building.ask}</p>
-        <p className="bmsg-done" role="status">{building.mode === 'rixse' ? 'Editing' : 'Building'} v{versions.length + 1}{building.basedOn ? ` from v${building.basedOn}` : ''}{building.mode === 'rixse' ? ` with rixse · ${building.ops} ${building.ops === 1 ? 'op' : 'ops'}` : ''}…</p>
+        <p className="bmsg-done" role="status">{building.mode === 'rixse' ? 'Editing' : 'Building'} v{versions.length + 1}{building.basedOn ? ` from v${building.basedOn}` : ''} · {elapsed(building.started)} · {building.writing ? (building.mode === 'rixse' ? `${building.ops} ${building.ops === 1 ? 'op' : 'ops'}` : 'writing') : 'thinking'}…</p>
       </div>}
       {failure && <p className="bmsg-fail" role="alert">{failure}</p>}
     </div>
@@ -222,7 +240,7 @@ export default function Builder() {
           {(['rixse', 'full'] as const).map(m => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} title={m === 'rixse' ? 'Edit the page in place' : 'Rewrite the whole page'}>{m === 'rixse' ? 'rixse edit' : 'Full rewrite'}</button>)}
         </span>}
         <small>Using ChatGPT plan · <button type="button" className="chatgpt-link" onClick={openUsage}>Usage</button></small>
-        <button type="submit" className="bchat-go" disabled={!!building || !ask.trim() || !model}>{building ? 'Building…' : 'Build'}</button>
+        <button type="submit" className="bchat-go" disabled={!!building || !ask.trim() || !model}>{building ? `Building ${elapsed(building.started)}` : 'Build'}</button>
       </div>
     </form>
   </>;
@@ -235,9 +253,9 @@ export default function Builder() {
       {building && <span className="bversions-live" role="status" aria-label={`Building v${versions.length + 1}`}>v{versions.length + 1}</span>}
     </nav>
     <section className="bpreview" aria-label="Design">
-      {frameDoc && (building ? preview || buildBase : current)
+      {frameDoc && (building ? /<body/i.test(preview) || buildBase : current)
         ? <iframe ref={frameRef} title={building ? 'Design in progress' : `Design v${current?.n}`} sandbox="allow-scripts" srcDoc={frameDoc} />
-        : <p className="bpreview-empty">{building ? 'Starting…' : 'Your design appears here.'}</p>}
+        : <p className="bpreview-empty">{building ? (building.writing ? 'Writing…' : 'Thinking…') : 'Your design appears here.'}</p>}
     </section>
   </div>;
 }

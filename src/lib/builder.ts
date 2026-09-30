@@ -51,7 +51,7 @@ export function extractHtml(answer: string): string {
  */
 export function withPreviewBridge(html: string, scrollY: number): string {
   const bridge = `<script data-zega-preview>(() => {
-  addEventListener('load', () => scrollTo({ top: ${Math.round(scrollY)}, behavior: 'instant' }));
+  addEventListener('load', () => { scrollTo({ top: ${Math.round(scrollY)}, behavior: 'instant' }); parent.postMessage({ zegaReady: true }, '*'); });
   let timer;
   addEventListener('scroll', () => { clearTimeout(timer); timer = setTimeout(() => parent.postMessage({ zegaScroll: scrollY }, '*'), 60); });
   addEventListener('message', event => {
