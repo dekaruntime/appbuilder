@@ -1,6 +1,7 @@
 mod account;
 mod appearance;
 mod chatgpt;
+mod earth;
 #[cfg(target_os = "linux")]
 mod desktop_identity;
 #[cfg(target_os = "linux")]
@@ -70,6 +71,8 @@ pub fn run() {
             chatgpt::chatgpt_models,
             chatgpt::chatgpt_ask,
             chatgpt::chatgpt_usage,
+            earth::earth_search,
+            earth::earth_open,
             local::local_recent_files,
             local::local_recent_photos,
             local::local_pictures_access_granted,
@@ -108,6 +111,7 @@ pub fn run() {
             app.manage(Arc::new(state));
             let chatgpt = ChatGptState::new(app.handle().clone()).map_err(|error| error.to_string())?;
             app.manage(Arc::new(chatgpt));
+            app.manage(Arc::new(earth::EarthState::new().map_err(|error| error.to_string())?));
             #[cfg(target_os = "linux")]
             if let Err(error) = desktop_identity::prepare(app.handle()) {
                 eprintln!("Could not install the zega launcher entry: {error}");
