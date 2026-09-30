@@ -5,6 +5,8 @@ import ShortcutHint from '../components/ShortcutHint';
 import AppTitlebar from '../components/AppTitlebar';
 import SearchBar from '../components/SearchBar';
 import GraphResults from '../components/GraphResults';
+import EarthResults from '../components/EarthResults';
+import { EARTH_GRAPHS, useEarthSearch } from '../lib/earth-search';
 import { useGraphSearch } from '../lib/index-search';
 
 import { useEffect, useState } from 'react';
@@ -19,7 +21,9 @@ export default function Home() {
   const [greeting, setGreeting] = useState('');
   const [query, setQuery] = useState('');
   const [screen, setScreen] = useState<'landing' | 'results'>('landing');
-  const graphSearch = useGraphSearch(query);
+  const onEarth = EARTH_GRAPHS.has(graph);
+  const graphSearch = useGraphSearch(graph === 'computer' ? query : '');
+  const earthSearch = useEarthSearch(query, onEarth);
   const recentSearch = useGraphSearch('');
   const files: LocalFile[] | null = recentSearch.loading ? null : recentSearch.results.filter(row => row.kind === 'files').slice(0, 5).map(row => ({ key: row.key, name: row.name, path: row.path, location: row.path, fileType: row.path.split('.').pop() || 'file', modifiedLabel: row.offline ? 'Offline' : '' }));
   const [settings, setSettings] = useState<LocalPane[]>([]);
@@ -89,7 +93,7 @@ export default function Home() {
     <div className="app"><nav className="rail" aria-label="Graphs">
       {['computer', 'earth', 'hockey', 'film'].map((name, index) => <button key={name} type="button" aria-pressed={graph === name} aria-label={name} title={name} onClick={() => setGraph(name)}>{['▣', '◎', '⌁', '▤'][index]}</button>)}<button className="plus" style={{ marginTop: 'auto', borderStyle: 'dashed' }} aria-label="Add a graph">+</button>
     </nav><div className="content"><section className="screen landing"><div className="hello"><h2>{greeting}</h2><p>Everything on this computer, in one graph. Nothing leaves it.</p></div>{searchBox()}
-      {screen === 'landing' ? <div className="shelves"><div className="shelf"><h3>Recent files</h3><div className="rows">{files === null ? <div className="skeleton" aria-label="Loading recent files" /> : visibleFiles.length ? visibleFiles.map(file => <button className="row file-row" key={file.path} type="button" onDoubleClick={() => void invoke('index_open_result', { key: file.key })}><span className={`fi ${fileClass(file.fileType)}`}>{file.fileType.slice(0, 3).toUpperCase()}</span><span><b>{file.name}</b><small>{file.location}</small></span><span className="when">{file.modifiedLabel}</span></button>) : <p className="empty">No recent files yet.</p>}</div></div>{photoShelf}<div className="quick" aria-label="Settings">{settings.map(pane => <button key={pane.bundleId} type="button" onClick={() => openSettings(pane)}><span aria-hidden="true">{pane.icon}</span>{pane.label}</button>)}</div></div> : <GraphResults {...graphSearch} photoPreviews={photoAccess === 'ready'} />}
+      {screen === 'landing' ? <div className="shelves"><div className="shelf"><h3>Recent files</h3><div className="rows">{files === null ? <div className="skeleton" aria-label="Loading recent files" /> : visibleFiles.length ? visibleFiles.map(file => <button className="row file-row" key={file.path} type="button" onDoubleClick={() => void invoke('index_open_result', { key: file.key })}><span className={`fi ${fileClass(file.fileType)}`}>{file.fileType.slice(0, 3).toUpperCase()}</span><span><b>{file.name}</b><small>{file.location}</small></span><span className="when">{file.modifiedLabel}</span></button>) : <p className="empty">No recent files yet.</p>}</div></div>{photoShelf}<div className="quick" aria-label="Settings">{settings.map(pane => <button key={pane.bundleId} type="button" onClick={() => openSettings(pane)}><span aria-hidden="true">{pane.icon}</span>{pane.label}</button>)}</div></div> : onEarth ? <EarthResults graph={graph} {...earthSearch} /> : graph === 'computer' ? <GraphResults {...graphSearch} photoPreviews={photoAccess === 'ready'} /> : <div className="res"><p className="empty">The {graph} graph isn't on zega.earth yet.</p></div>}
     </section></div></div>
     <TimingCorner />
   </div></main>;
