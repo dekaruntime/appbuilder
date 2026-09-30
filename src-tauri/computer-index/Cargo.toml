@@ -2,6 +2,7 @@
 name = "computer-index"
 version = "0.1.0"
 edition = "2021"
+license = "Apache-2.0"
 
 [dependencies]
 zega = { git = "https://github.com/zegadb/zega", rev = "2082501631b534c379df73150dd26eebcc80d529", default-features = false }

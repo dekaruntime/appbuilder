@@ -137,5 +137,3 @@ References: [Tauri global shortcuts](https://v2.tauri.app/plugin/global-shortcut
 [XDG GlobalShortcuts](https://flatpak.github.io/xdg-desktop-portal/docs/doc-org.freedesktop.portal.GlobalShortcuts.html),
 [Hyprland global shortcuts](https://wiki.hypr.land/Configuring/Basics/Binds/#dbus-global-shortcuts),
 [PowerToys Run](https://learn.microsoft.com/en-us/windows/powertoys/run).
-
--codex

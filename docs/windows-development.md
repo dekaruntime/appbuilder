@@ -77,5 +77,3 @@ The native shortcut acceptance procedure is in
 [shortcuts/README.md](shortcuts/README.md). Test development and built apps
 separately. A browser test or successful compilation cannot establish native
 focus, shortcut delivery, tray behavior, installer behavior, or suspend/resume.
-
--codex
