@@ -769,14 +769,20 @@ impl ChatGptState {
         if question.is_empty() || question.len() > MAX_QUESTION {
             return Err(format!("Ask a question of up to {MAX_QUESTION} characters."));
         }
-        let body = json!({
+        // Low reasoning effort: search answers should start in a second or
+        // two, not after a long think. A model that refuses the setting
+        // (`subscription_sharing_unsupported_capability`) is asked again
+        // without it.
+        let mut body = json!({
             "model": model,
             "input": [{ "role": "user", "content": question }],
             "store": false,
             "stream": true,
+            "reasoning": { "effort": "low" },
         });
         let started = Instant::now();
         let mut forced = false;
+        let mut plain = false;
         let response = loop {
             let token = self.access_token(forced)?;
             let response = self
@@ -790,6 +796,20 @@ impl ChatGptState {
             if response.status() == reqwest::StatusCode::UNAUTHORIZED && !forced {
                 forced = true;
                 continue;
+            }
+            if response.status() == reqwest::StatusCode::BAD_REQUEST && !plain {
+                let error: Value = response.json().unwrap_or(Value::Null);
+                if error["error"]["code"] == "subscription_sharing_unsupported_capability" {
+                    plain = true;
+                    if let Some(body) = body.as_object_mut() {
+                        body.remove("reasoning");
+                    }
+                    continue;
+                }
+                let error = &error["error"];
+                let mut send = send;
+                send(failure(error["code"].as_str(), error["message"].as_str()));
+                return Ok(());
             }
             break response;
         };

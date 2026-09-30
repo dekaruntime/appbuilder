@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import AnswerText from './AnswerText';
 import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
 
 type ChatGptView = { status: 'signed_out' | 'pending' | 'signed_in'; email: string | null; error: string | null };
@@ -96,7 +97,7 @@ export default function ChatGptSettings() {
           <button type="submit" disabled={asking || !question.trim() || !model}>{asking ? 'Answering…' : 'Ask'}</button>
         </div>
       </form>
-      {answer && <div className="chatgpt-answer" aria-live="polite">{answer}</div>}
+      {answer && <div className="chatgpt-answer" aria-live="polite"><AnswerText text={answer} /></div>}
       {done && <p className="chatgpt-meta">Answered in {formatMs(done.elapsed_ms)}{done.first_word_ms !== null ? ` (first words in ${formatMs(done.first_word_ms)})` : ''}{done.tokens ? ` · ${formatTokens(done.tokens)}` : ''}</p>}
       {usage && <p className="chatgpt-meta">Tokens used from your plan on this computer: today {(usage.today.input + usage.today.output).toLocaleString()} · last 7 days {(usage.last_7_days.input + usage.last_7_days.output).toLocaleString()} · all time {(usage.all_time.input + usage.all_time.output).toLocaleString()} across {usage.all_time.answers.toLocaleString()} {usage.all_time.answers === 1 ? 'answer' : 'answers'}. ChatGPT shows your plan's remaining allowance as a percentage in <button type="button" className="chatgpt-link" onClick={openUsage}>usage settings</button>.</p>}
       {failure && <p role="alert">{failure.message}{failure.usage_limited && <> <button type="button" className="chatgpt-continue" onClick={openUsage}>Manage usage</button></>}</p>}
