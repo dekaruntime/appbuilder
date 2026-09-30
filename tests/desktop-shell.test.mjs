@@ -16,6 +16,19 @@ test('static export opens on the computer graph shell', () => {
   assert.doesNotMatch(html, /Download link|marketing homepage/i);
 });
 
+test('every window call the title bar makes is permitted', () => {
+  // A call without its capability is refused by Tauri, silently to the user:
+  // the close, minimize and full-screen buttons did nothing (desktop#33).
+  const titlebar = readFileSync('src/components/AppTitlebar.tsx', 'utf8');
+  const granted = JSON.parse(readFileSync('src-tauri/capabilities/default.json', 'utf8')).permissions;
+  const calls = [...titlebar.matchAll(/window\.(close|minimize|toggleMaximize|setFullscreen|isFullscreen)\(/g)].map(match => match[1]);
+  assert.deepEqual([...new Set(calls)].sort(), ['close', 'isFullscreen', 'minimize', 'setFullscreen', 'toggleMaximize']);
+  for (const call of calls) {
+    const permission = `core:window:allow-${call.replace(/[A-Z]/g, letter => `-${letter.toLowerCase()}`)}`;
+    assert.ok(granted.includes(permission), `${permission} must be granted for the title bar's ${call}()`);
+  }
+});
+
 test('desktop auth uses the loopback account commands', () => {
   const auth = readFileSync('public/desktop-auth.js', 'utf8');
   const native = readFileSync('src-tauri/src/account.rs', 'utf8');
