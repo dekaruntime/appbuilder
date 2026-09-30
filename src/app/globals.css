@@ -192,6 +192,9 @@ body { padding: 0; }
 .window { height: 100%; min-height: 0; border-radius: 0; box-shadow: none; }
 .app { min-height: 0; height: calc(100% - 38px); }
 .content { min-width: 0; overflow: auto; }
+/* Settings has no rail: its page scrolls in a container the height of the
+   window below the title bar, with the scroll bar at the window's edge. */
+.settings-scroll { height: calc(100% - 38px); overflow: auto; }
 .lights button { width: 12px; height: 12px; padding: 0; border: 0; border-radius: 50%; background: transparent; display: grid; place-items: center; }
 .lights button i { width: 12px; height: 12px; }
 .signed-in { display: flex; align-items: center; gap: 8px; font-size: 12px; }
@@ -213,9 +216,11 @@ html:has(.float-root), body:has(.float-root) { overflow: hidden; background: tra
 .float-root[data-native-material="true"] .float-panel { background: transparent; }
 .float-root[data-square-corners="true"] .float-panel, .float-root[data-square-corners="true"] .float-search { border-radius: 0; }
 .float-panel .lres { flex: 1; min-height: 0; max-height: none; align-content: start; }
-.float-panel .lhead, .float-panel .float-search, .float-panel .lfoot { flex-shrink: 0; }
+.float-panel .float-search, .float-panel .lfoot { flex-shrink: 0; }
 .float-panel .lfoot { background: color-mix(in srgb, var(--tint) 60%, transparent); }
-.float-panel .lhead { user-select: none; cursor: default; }
+.float-panel .lfoot { user-select: none; cursor: default; }
+.lfoot .float-word { display: block; margin-left: auto; }
+.lfoot .float-word .v { display: inline; }
 .float-word { font: 700 14px var(--sans); letter-spacing: -.03em; color: var(--ink); }
 .float-search { box-sizing: border-box; width: 100%; border-radius: 10px; padding: 7px 8px 7px 14px; }
 .float-search input { position: static; inset: auto; flex: 1; width: auto; min-width: 0; color: var(--ink); caret-color: var(--accent); font-size: 20px; }
@@ -229,7 +234,6 @@ html:has(.float-root), body:has(.float-root) { overflow: hidden; background: tra
 .float-empty { padding: 12px; margin: 0; color: var(--soft); }
 .float-panel .lfoot { align-items: center; gap: 14px; }
 .float-panel .lfoot .kbd { padding: 1px 5px; }
-.local-note { margin-left: auto; }
 
 /* Setup uses the locked desktop palette and cqx's shortcut dialog structure. */
 .shortcut-page { box-sizing: border-box; width: 100%; max-width: 520px; min-height: 100svh; margin: 0 auto; padding: 24px; display: flex; flex-direction: column; gap: 14px; font-size: 14px; }
@@ -262,6 +266,8 @@ html:has(.float-root), body:has(.float-root) { overflow: hidden; background: tra
 
 /* One input presentation for main-window and floating search. */
 .search.search-bar { box-sizing: border-box; border-radius: 10px; padding: 7px 8px 7px 14px; min-height: 46px; }
+/* The floating search's input meets the panel's straight edges: square it. */
+.search.search-bar.float-search { border-radius: 0; }
 .search.search-bar input { position: static; inset: auto; flex: 1; width: auto; min-width: 0; color: var(--ink); caret-color: var(--accent); font: 400 20px var(--sans); }
 .search.search-bar input::placeholder { color: var(--soft); }
 .settings-link { width: 30px; height: 30px; margin-right: 8px; display: grid; place-items: center; border-radius: 6px; color: var(--ink); }

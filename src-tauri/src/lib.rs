@@ -14,6 +14,8 @@ mod loopback;
 mod menu;
 #[cfg(target_os = "macos")]
 mod shortcut;
+#[cfg(target_os = "macos")]
+mod thumbnail;
 mod shortcut_config;
 #[cfg(any(target_os = "linux", all(test, target_os = "macos")))]
 mod shortcut_portal;

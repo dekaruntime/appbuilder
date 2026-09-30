@@ -352,3 +352,34 @@ fn escaped_names_and_updates_are_safe_and_searchable() {
         .is_empty());
     assert_eq!(index.counts().unwrap()["File"], 2);
 }
+
+#[test]
+fn app_roots_index_apps_not_the_files_inside_app_folders() {
+    // Sami's screenshot: Adobe's resource files from inside /Applications
+    // showed up as the user's Files (desktop#43).
+    let repo = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..").canonicalize().unwrap();
+    let base = repo.join(format!(".tmp/app-roots-{}", std::process::id()));
+    if base.exists() {
+        fs::remove_dir_all(&base).unwrap();
+    }
+    let home = base.join("home");
+    let apps = base.join("Applications");
+    fs::create_dir_all(home.join("Documents")).unwrap();
+    fs::write(home.join("Documents/budget-notes.json"), "{}").unwrap();
+    fs::create_dir_all(apps.join("Toolbox.app/Contents")).unwrap();
+    fs::create_dir_all(apps.join("Utilities/Vendor Suite/Vendor Tool.app/Contents")).unwrap();
+    let resources = apps.join("Utilities/Vendor Suite/ACC/resources/legacy");
+    fs::create_dir_all(&resources).unwrap();
+    fs::write(resources.join("fil_PH.json"), "{}").unwrap();
+    fs::write(apps.join("Utilities/Vendor Suite/main.jsx"), "x").unwrap();
+    let index = Index::open(&base.join("graph")).unwrap();
+    let roots = [Root { path: home, apps: false }, Root { path: apps, apps: true }];
+    index.reconcile(&roots).unwrap();
+    let names = |query: &str| index.search(query).unwrap().into_iter().map(|r| r.name).collect::<Vec<_>>();
+    assert!(names("toolbox").iter().any(|name| name.starts_with("Toolbox")), "apps in the app root are found");
+    assert!(names("vendor tool").iter().any(|name| name.starts_with("Vendor Tool")), "an app three folders down is found");
+    assert!(names("fil_PH").is_empty(), "a vendor's resource file is not the user's file");
+    assert!(names("main.jsx").is_empty(), "a file in an app folder is not the user's file");
+    assert!(names("budget-notes").iter().any(|name| name == "budget-notes.json"), "the user's own files are still found");
+    fs::remove_dir_all(base).ok();
+}

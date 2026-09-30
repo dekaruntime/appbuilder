@@ -6,8 +6,10 @@ use tauri_plugin_opener::OpenerExt;
 
 pub struct IndexState {
     service: std::result::Result<Mutex<Service>, String>,
-    #[cfg(target_os = "windows")]
-    icons: Mutex<std::collections::HashMap<String, String>>,
+    /// Icons (Windows) and thumbnails (macOS) for results already shown,
+    /// keyed by result and, on macOS, the file's modified time.
+    #[cfg(any(target_os = "windows", target_os = "macos"))]
+    icons: Mutex<std::collections::HashMap<String, Option<String>>>,
 }
 impl IndexState {
     pub fn start(app: &tauri::AppHandle, actions: &[(String, String)]) -> Self {
@@ -51,7 +53,7 @@ impl IndexState {
         };
         Self {
             service: start(),
-            #[cfg(target_os = "windows")]
+            #[cfg(any(target_os = "windows", target_os = "macos"))]
             icons: Mutex::new(std::collections::HashMap::new()),
         }
     }
@@ -134,14 +136,8 @@ pub async fn index_result_icon(
 ) -> Result<Option<String>, String> {
     #[cfg(target_os = "windows")]
     {
-        if let Some(icon) = state
-            .icons
-            .lock()
-            .map_err(|e| e.to_string())?
-            .get(&key)
-            .cloned()
-        {
-            return Ok(Some(icon));
+        if let Some(icon) = state.icons.lock().map_err(|e| e.to_string())?.get(&key).cloned() {
+            return Ok(icon);
         }
         let index = state.index()?;
         let target_key = key.clone();
@@ -151,16 +147,42 @@ pub async fn index_result_icon(
         })
         .await
         .map_err(|e| e.to_string())??;
-        let mut cache = state.icons.lock().map_err(|e| e.to_string())?;
-        if cache.len() >= 256 {
-            cache.clear();
-        }
-        cache.insert(key, icon.clone());
+        remember(&state, key, Some(icon.clone()))?;
         Ok(Some(icon))
     }
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
+    {
+        let index = state.index()?;
+        let path = index.resolve(&key)?;
+        // A changed file gets a fresh thumbnail: the modified time is part of the key.
+        let modified = std::fs::metadata(&path)
+            .and_then(|meta| meta.modified())
+            .ok()
+            .and_then(|time| time.duration_since(std::time::UNIX_EPOCH).ok())
+            .map_or(0, |since| since.as_millis());
+        let cache_key = format!("{key}@{modified}");
+        if let Some(thumbnail) = state.icons.lock().map_err(|e| e.to_string())?.get(&cache_key).cloned() {
+            return Ok(thumbnail);
+        }
+        let thumbnail = tauri::async_runtime::spawn_blocking(move || crate::thumbnail::thumbnail(&path))
+            .await
+            .map_err(|e| e.to_string())?;
+        remember(&state, cache_key, thumbnail.clone())?;
+        Ok(thumbnail)
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
     {
         let _ = (key, state);
         Ok(None)
     }
+}
+
+#[cfg(any(target_os = "windows", target_os = "macos"))]
+fn remember(state: &IndexState, key: String, icon: Option<String>) -> Result<(), String> {
+    let mut cache = state.icons.lock().map_err(|e| e.to_string())?;
+    if cache.len() >= 256 {
+        cache.clear();
+    }
+    cache.insert(key, icon);
+    Ok(())
 }
