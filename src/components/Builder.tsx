@@ -197,7 +197,7 @@ export default function Builder() {
       {versions.map(v => <div key={v.n} className="bmsg">
         <p className="bmsg-ask">{v.ask}</p>
         <button type="button" className="bmsg-done" aria-pressed={shown === v.n} onClick={() => setShown(v.n)}>
-          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {madeLabel(v.made)} · {formatMs(v.ms)}{v.tokens ? ` · ${(v.tokens.input + v.tokens.output).toLocaleString()} tokens` : ''}
+          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {madeLabel(v.made)} · {formatMs(v.ms)}{v.tokens ? ` · ${v.tokens.input.toLocaleString()} in · ${v.tokens.output.toLocaleString()} out${v.tokens.cached_input ? ` (${v.tokens.cached_input.toLocaleString()} cached)` : ''}` : ''}
         </button>
       </div>)}
       {building && <div className="bmsg">
