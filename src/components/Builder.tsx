@@ -6,7 +6,7 @@ import BuilderRail from './BuilderRail';
 import { BUILDER_INSTRUCTIONS, EMPTY_DOCUMENT, buildRequest, extractHtml, withPreviewBridge } from '../lib/builder';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
 import { RIXSE_INSTRUCTIONS, applyOp, editRequest, parseDocument, parseOp, serialize, takeLines } from '../lib/rixse-edit';
-import { formatMs, reportTiming, type Tokens } from '../lib/timing';
+import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
 
 type Mode = 'full' | 'rixse';
 // How a version was made: a full rewrite, rixse edit ops, or rixse asking
@@ -197,7 +197,7 @@ export default function Builder() {
       {versions.map(v => <div key={v.n} className="bmsg">
         <p className="bmsg-ask">{v.ask}</p>
         <button type="button" className="bmsg-done" aria-pressed={shown === v.n} onClick={() => setShown(v.n)}>
-          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {madeLabel(v.made)} · {formatMs(v.ms)}{v.tokens ? ` · ${v.tokens.input.toLocaleString()} in · ${v.tokens.output.toLocaleString()} out${v.tokens.cached_input ? ` (${v.tokens.cached_input.toLocaleString()} cached)` : ''}` : ''}
+          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {madeLabel(v.made)} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}
         </button>
       </div>)}
       {building && <div className="bmsg">

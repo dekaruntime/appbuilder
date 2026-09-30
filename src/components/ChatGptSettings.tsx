@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import AnswerText from './AnswerText';
-import { formatMs, formatTokens, reportTiming } from '../lib/timing';
+import { formatMs, formatTokenBreakdown, reportTiming } from '../lib/timing';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
 
 type Totals = { answers: number; input: number; output: number };
@@ -91,8 +91,16 @@ export default function ChatGptSettings() {
         </div>
       </form>
       {answer && <div className="chatgpt-answer" aria-live="polite"><AnswerText text={answer} /></div>}
-      {done && <p className="chatgpt-meta">Answered in {formatMs(done.elapsed_ms)}{done.first_word_ms !== null ? ` (first words in ${formatMs(done.first_word_ms)})` : ''}{done.tokens ? ` · ${formatTokens(done.tokens)}` : ''}</p>}
-      {usage && <p className="chatgpt-meta">Tokens used from your plan on this computer: today {(usage.today.input + usage.today.output).toLocaleString()} · last 7 days {(usage.last_7_days.input + usage.last_7_days.output).toLocaleString()} · all time {(usage.all_time.input + usage.all_time.output).toLocaleString()} across {usage.all_time.answers.toLocaleString()} {usage.all_time.answers === 1 ? 'answer' : 'answers'}. ChatGPT shows your plan's remaining allowance as a percentage in <button type="button" className="chatgpt-link" onClick={openUsage}>usage settings</button>.</p>}
+      {done && <p className="chatgpt-meta">Answered in {formatMs(done.elapsed_ms)}{done.first_word_ms !== null ? ` (first words in ${formatMs(done.first_word_ms)})` : ''}{done.tokens ? ` · ${formatTokenBreakdown(done.tokens)}` : ''}</p>}
+      {usage && <>
+        <table className="chatgpt-usage">
+          <caption>Tokens used from your ChatGPT plan on this computer</caption>
+          <thead><tr><th scope="col" /><th scope="col">Output</th><th scope="col">Input</th><th scope="col">Answers</th></tr></thead>
+          <tbody>{([['Today', usage.today], ['Last 7 days', usage.last_7_days], ['All time', usage.all_time]] as const).map(([label, totals]) =>
+            <tr key={label}><th scope="row">{label}</th><td>{totals.output.toLocaleString()}</td><td>{totals.input.toLocaleString()}</td><td>{totals.answers.toLocaleString()}</td></tr>)}</tbody>
+        </table>
+        <p className="chatgpt-meta">Output tokens are what an answer costs most, so they are the number shown elsewhere in the app. ChatGPT shows your plan's remaining allowance as a percentage in <button type="button" className="chatgpt-link" onClick={openUsage}>usage settings</button>.</p>
+      </>}
       {failure && <p role="alert">{failure.message}{failure.usage_limited && <> <button type="button" className="chatgpt-continue" onClick={openUsage}>Manage usage</button></>}</p>}
     </>}
     {(error || view?.error) && <p role="alert">{error || view?.error}</p>}

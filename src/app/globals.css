@@ -370,3 +370,8 @@ p.bmsg-done { cursor: default; }
 .bmode button + button { border-left: 1px solid var(--edge); }
 .bmode button[aria-pressed="true"] { background: var(--ink); color: var(--win); }
 .bchat-go { margin-left: auto; }
+.chatgpt-usage { border-collapse: collapse; font-size: 13px; font-variant-numeric: tabular-nums; margin: 14px 0 4px; }
+.chatgpt-usage caption { white-space: nowrap; text-align: left; padding-bottom: 6px; color: var(--soft); font-size: 12.5px; }
+.chatgpt-usage th, .chatgpt-usage td { padding: 5px 16px 5px 0; border-bottom: 1px solid var(--edge); text-align: right; }
+.chatgpt-usage th[scope="row"], .chatgpt-usage thead th:first-child { text-align: left; font-weight: 500; }
+.chatgpt-usage thead th { color: var(--soft); font-weight: 500; font-size: 12px; }

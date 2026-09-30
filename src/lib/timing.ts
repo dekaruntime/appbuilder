@@ -25,5 +25,8 @@ export function useLastTiming() {
 }
 
 export const formatMs = (ms: number) => ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
-export const formatTokens = (tokens: Tokens) =>
-  `${(tokens.input + tokens.output).toLocaleString()} tokens (${tokens.input.toLocaleString()} in · ${tokens.output.toLocaleString()} out)`;
+// Everyday screens show output tokens only: they are what an answer costs
+// most and what rixse edits save. The full breakdown lives in Settings.
+export const formatTokens = (tokens: Tokens) => `${tokens.output.toLocaleString()} output tokens`;
+export const formatTokenBreakdown = (tokens: Tokens) =>
+  `${tokens.output.toLocaleString()} output · ${tokens.input.toLocaleString()} input${tokens.cached_input ? ` (${tokens.cached_input.toLocaleString()} cached)` : ''}${tokens.reasoning ? ` · ${tokens.reasoning.toLocaleString()} of the output was reasoning` : ''}`;
