@@ -147,6 +147,44 @@ fn local_volume(path: &Path) -> io::Result<bool> {
     }
 }
 
+/// iCloud is never indexed (desktop#45). Anything iCloud manages (Desktop
+/// and Documents when they sync, iCloud Drive) is skipped without being
+/// opened: opening a placeholder makes macOS download it, which is what made
+/// scans take 1–2 s per item and pulled people's files down from iCloud.
+#[cfg(target_os = "macos")]
+pub fn icloud(path: &Path) -> bool {
+    use std::os::macos::fs::MetadataExt;
+    // An evicted placeholder ("Optimize Mac Storage"), from a plain stat
+    // that never triggers a download.
+    const SF_DATALESS: u32 = 0x4000_0000;
+    let Ok(meta) = fs::symlink_metadata(path) else { return false };
+    if meta.st_flags() & SF_DATALESS != 0 {
+        return true;
+    }
+    // Asking Foundation costs up to a millisecond, so only folders are asked:
+    // an iCloud folder is skipped whole, and a file in a local folder is local.
+    if !meta.is_dir() {
+        return false;
+    }
+    let Some(text) = path.to_str() else { return false };
+    objc2::rc::autoreleasepool(|_| {
+        let url = objc2_foundation::NSURL::fileURLWithPath(&objc2_foundation::NSString::from_str(text));
+        let mut value = None;
+        // SAFETY: NSURLIsUbiquitousItemKey is a Foundation constant, and its
+        // value is an NSNumber (checked by the downcast below).
+        let found = unsafe { url.getResourceValue_forKey_error(&mut value, objc2_foundation::NSURLIsUbiquitousItemKey) };
+        found.is_ok()
+            && value
+                .and_then(|value| value.downcast::<objc2_foundation::NSNumber>().ok())
+                .is_some_and(|number| number.boolValue())
+    })
+}
+
+#[cfg(not(target_os = "macos"))]
+pub fn icloud(_path: &Path) -> bool {
+    false
+}
+
 pub fn visible(path: &Path) -> bool {
     path.file_name().is_some_and(|n| {
         let n = n.to_string_lossy().to_ascii_lowercase();
@@ -334,4 +372,17 @@ pub fn volume_present(record: &Record) -> bool {
     Path::new(&record.path)
         .ancestors()
         .any(|p| identity(p).is_ok_and(|(volume, _)| volume == record.volume))
+}
+
+#[cfg(all(test, target_os = "macos"))]
+mod icloud_tests {
+    #[test]
+    fn local_files_and_folders_are_not_icloud() {
+        let dir = std::env::temp_dir().join(format!("zega-icloud-{}", std::process::id()));
+        std::fs::create_dir_all(dir.join("sub")).unwrap();
+        std::fs::write(dir.join("sub/file.txt"), "local").unwrap();
+        assert!(!super::icloud(&dir));
+        assert!(!super::icloud(&dir.join("sub/file.txt")));
+        std::fs::remove_dir_all(dir).ok();
+    }
 }

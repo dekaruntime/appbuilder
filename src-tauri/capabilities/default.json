@@ -2,6 +2,19 @@
   "$schema": "../gen/schemas/desktop-schema.json",
   "identifier": "default",
   "description": "default capability for the desktop shell",
-  "windows": ["main", "launcher", "shortcut-setup"],
-  "permissions": ["core:default", "core:window:allow-start-dragging", "opener:default"]
+  "windows": [
+    "main",
+    "launcher",
+    "shortcut-setup"
+  ],
+  "permissions": [
+    "core:default",
+    "core:window:allow-start-dragging",
+    "opener:default",
+    "core:window:allow-close",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-is-fullscreen"
+  ]
 }
