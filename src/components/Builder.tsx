@@ -129,6 +129,14 @@ export default function Builder() {
     return () => clearInterval(timer);
   }, [projectPath, building, shown]);
 
+  // The real native window, with fast refresh: every version the builder saves
+  // to the folder shows up there too. Uses `deka` on PATH, else the local
+  // 0.60.1 build until the native CLI is published to R2 (deka#1198).
+  const runOnDesktop = () => {
+    setTerminalCommand(`"$(command -v deka || echo /Volumes/Projects/claude/deka-runtime-0.60.1/bin/deka)" dev deka.json`);
+    setTerminalOpen(true);
+  };
+
   const fixInTerminal = (error: string) => {
     const prompt = `The deka app in app.dsx fails to compile in the zega preview with: ${error}. Read AGENTS.md for the runtime's limits, then fix app.dsx.`;
     setTerminalCommand(`codex '${prompt.replace(/'/g, "'\\''")}'`);
@@ -295,6 +303,7 @@ export default function Builder() {
         <select aria-label="Window size" value={size.join('x')} onChange={event => setSize(SIZES.find(s => s.join('x') === event.target.value) ?? SIZES[1])}>
           {SIZES.map(s => <option key={s.join('x')} value={s.join('x')}>{s[0]} × {s[1]}</option>)}
         </select>
+        <button type="button" className="bapp-run" disabled={!projectPath} onClick={runOnDesktop}>Run on desktop</button>
         <button type="button" className="bapp-term" aria-pressed={terminalOpen} onClick={() => { setTerminalCommand(null); setTerminalOpen(open => !open); }}>Terminal</button>
         <span className="bmode" role="group" aria-label="Desktop">
           {DESKTOPS.map(d => <button key={d.id} type="button" aria-pressed={desktop === d.id} onClick={() => setDesktop(d.id)}>{d.label}</button>)}
