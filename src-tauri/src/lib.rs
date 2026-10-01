@@ -74,6 +74,7 @@ pub fn run() {
             chatgpt::chatgpt_disconnect,
             chatgpt::chatgpt_models,
             chatgpt::chatgpt_ask,
+            chatgpt::chatgpt_stop,
             project::project_save,
             project::project_read,
             project::project_record,

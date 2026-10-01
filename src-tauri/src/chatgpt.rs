@@ -220,6 +220,26 @@ pub struct ChatGptState {
     /// One refresh at a time: refresh tokens rotate, and a second refresh
     /// with the old one would be refused as reused.
     refreshing: Mutex<()>,
+    /// Bumped by `chatgpt_stop`: an answer started under an older value stops
+    /// at its next chunk and reports itself as stopped.
+    stop_generation: std::sync::atomic::AtomicU64,
+}
+
+/// Reads an answer stream until the user stops it: once the generation moves
+/// on, the next read ends the stream, and dropping it closes the connection.
+struct Stoppable<'a, R> {
+    inner: R,
+    generation: u64,
+    current: &'a std::sync::atomic::AtomicU64,
+}
+
+impl<R: std::io::Read> std::io::Read for Stoppable<'_, R> {
+    fn read(&mut self, buf: &mut [u8]) -> std::io::Result<usize> {
+        if self.current.load(std::sync::atomic::Ordering::SeqCst) != self.generation {
+            return Ok(0);
+        }
+        self.inner.read(buf)
+    }
 }
 
 fn keychain() -> Result<keyring::Entry> {
@@ -449,6 +469,7 @@ impl ChatGptState {
             streaming,
             inner: Mutex::new(Inner::default()),
             refreshing: Mutex::new(()),
+            stop_generation: std::sync::atomic::AtomicU64::new(0),
         };
         let saved = state
             .saved_path()
@@ -842,13 +863,29 @@ impl ChatGptState {
             send(failure(error["code"].as_str(), error["message"].as_str()));
             return Ok(());
         }
-        read_stream(std::io::BufReader::new(response), started, |event| {
+        let generation = self.stop_generation.load(std::sync::atomic::Ordering::SeqCst);
+        let stoppable = Stoppable { inner: response, generation, current: &self.stop_generation };
+        let mut finished = false;
+        let result = read_stream(std::io::BufReader::new(stoppable), started, |event| {
             if let AskEvent::Completed { tokens: Some(tokens), .. } = &event {
                 // Counting must never cost the user their answer.
                 let _ = self.record_usage(tokens);
             }
+            if !matches!(event, AskEvent::Delta { .. }) {
+                finished = true;
+            }
             send(event);
-        })
+        });
+        if !finished && self.stop_generation.load(std::sync::atomic::Ordering::SeqCst) != generation {
+            send(failure(Some("stopped"), Some("Stopped.")));
+            return Ok(());
+        }
+        result
+    }
+
+    /// Stop every answer in progress (the builder's Stop button).
+    pub fn stop(&self) {
+        self.stop_generation.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
     }
 
     fn usage_path(&self) -> Result<PathBuf> {
@@ -933,9 +970,26 @@ pub async fn chatgpt_ask(
     .map_err(|_| "The answer was interrupted.".to_string())?
 }
 
+#[tauri::command]
+pub fn chatgpt_stop(state: State<'_, Arc<ChatGptState>>) {
+    state.stop();
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_stopped_stream_ends_at_its_next_read() {
+        use std::io::Read;
+        let current = std::sync::atomic::AtomicU64::new(0);
+        let mut stream = Stoppable { inner: std::io::Cursor::new(b"data: one\n\ndata: two\n\n".to_vec()), generation: 0, current: &current };
+        let mut first = [0u8; 4];
+        assert_eq!(stream.read(&mut first).unwrap(), 4);
+        current.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+        let mut rest = Vec::new();
+        assert_eq!(stream.read_to_end(&mut rest).unwrap(), 0, "nothing more is read once stopped");
+    }
 
     fn jwt(claims: Value) -> String {
         format!(

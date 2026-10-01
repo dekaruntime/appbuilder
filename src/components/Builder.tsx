@@ -4,6 +4,7 @@ import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import BuilderRail from './BuilderRail';
 import DekaPreview, { type PreviewStatus } from './DekaPreview';
+import SketchPreview from './SketchPreview';
 import DesktopStage, { defaultDesktop, type DesktopTheme } from './DesktopStage';
 import TerminalPane, { type TerminalCommand } from './TerminalPane';
 import { IDEA_EVENT, PENDING_IDEA } from './IdeaRouter';
@@ -65,6 +66,8 @@ export default function Builder() {
   const [shown, setShown] = useState<number | null>(null);
   const [building, setBuilding] = useState<Building | null>(null);
   const [preview, setPreview] = useState('');
+  // While a sketch round streams, `preview` holds Markdown, not DekaScript.
+  const [previewIsSketch, setPreviewIsSketch] = useState(false);
   const [ask, setAsk] = useState('');
   const [mode, setMode] = useState<Mode>('rixse');
   // What a new idea starts as: a quick sketch, or a full app.
@@ -105,6 +108,8 @@ export default function Builder() {
   // before the terminal sees the keys, so they work while typing in a shell.
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => {
+      // Esc stops a build in progress (the terminal keeps Esc otherwise).
+      if (event.key === 'Escape' && buildingRef.current && !(event.target as HTMLElement | null)?.closest?.('.terminal-slide')) { event.preventDefault(); stopRef.current(); return; }
       const mod = /Mac/.test(navigator.userAgent) ? event.metaKey : event.ctrlKey;
       if (!mod || event.shiftKey || event.altKey) return;
       const key = event.key.toLowerCase();
@@ -266,17 +271,34 @@ export default function Builder() {
   // that doesn't compile yet leaves the last working app on screen.
   const shownSource = building ? preview || current?.source || '' : current?.source ?? '';
 
-  // One request to ChatGPT; resolves with its completion, or null when it failed.
+  // Stop: every request in flight resolves as stopped at once (the UI frees
+  // up immediately), and the stream itself is cut at its next chunk.
+  const stopped = useRef(false);
+  const stopWaiters = useRef(new Set<() => void>());
+  const stop = () => {
+    stopped.current = true;
+    void invoke('chatgpt_stop').catch(() => {});
+    stopWaiters.current.forEach(wake => wake());
+    stopWaiters.current.clear();
+  };
+
+  // One request to ChatGPT; resolves with its completion, or null when it
+  // failed or was stopped.
   const request = async (question: string, instructions: string, onText: (text: string) => void): Promise<Done | null> => {
+    if (stopped.current) return null;
     let done: Done | null = null;
     const channel = new Channel<AskEvent>();
     channel.onmessage = event => {
+      if (stopped.current) return;
       if (event.kind === 'delta') { setBuilding(state => state && !state.writing ? { ...state, writing: true } : state); onText(event.text); }
-      else if (event.kind === 'failed') setFailure(event.message);
+      else if (event.kind === 'failed') { if (event.code !== 'stopped') setFailure(event.message); }
       else done = event;
     };
-    try { await invoke('chatgpt_ask', { question, model, instructions, cacheKey: session.current, onEvent: channel }); }
-    catch (reason) { setFailure(String(reason)); return null; }
+    const halted = new Promise<'stopped'>(resolve => { stopWaiters.current.add(() => resolve('stopped')); });
+    try {
+      const result = await Promise.race([invoke('chatgpt_ask', { question, model, instructions, cacheKey: session.current, onEvent: channel }), halted]);
+      if (result === 'stopped' || stopped.current) return null;
+    } catch (reason) { if (!stopped.current) setFailure(String(reason)); return null; }
     return done;
   };
 
@@ -325,9 +347,9 @@ export default function Builder() {
   // A sketch round: the model writes or edits sketch.md; the app compiles it
   // to DekaScript (it always compiles) and runs it. Streams into the preview.
   const sketchPass = async (ask: string, base: Version | null) => {
-    const compiled = (sketch: string) => compileSketch(sketch).source;
+    setPreviewIsSketch(true);
     if (base?.sketch) {
-      const edited = await rixsePass(sketchEditRequest(ask, base.sketch), base.sketch, SKETCH_EDIT_INSTRUCTIONS, compiled);
+      const edited = await rixsePass(sketchEditRequest(ask, base.sketch), base.sketch, SKETCH_EDIT_INSTRUCTIONS);
       if (edited && !edited.full) return { sketch: edited.source, done: edited.done, made: { how: 'rixse', ops: edited.ops, missed: edited.missed } as Made };
       if (!edited) return null;
     }
@@ -337,7 +359,7 @@ export default function Builder() {
     const done = await request(question, SKETCH_INSTRUCTIONS, text => {
       answer += text;
       const now = performance.now();
-      if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(compiled(extractSketch(answer))); }
+      if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(extractSketch(answer)); }
     });
     return done && { sketch: extractSketch(answer), done, made: { how: 'full' } as Made };
   };
@@ -346,21 +368,24 @@ export default function Builder() {
   const build = async (text: string, fresh = false) => {
     const ask = text.trim();
     if (!ask || !model || building) return;
+    stopped.current = false;
     const base = fresh ? null : current;
     // No base means a new app: a fresh id and folder, and its own version list
     // (the previous app stays in History).
     if (!base) { app.current = { id: newAppId(), created: false }; written.current = null; recorded.current = new Set(); setProjectPath(null); setVersions([]); }
     const n = base ? versions.length + 1 : 1;
     const how: Mode = base ? mode : 'full';
-    setAsk(''); setFailure(null); setPreview('');
+    setAsk(''); setFailure(null); setPreview(''); setPreviewIsSketch(false);
     setBuilding({ ask, basedOn: base?.n ?? null, mode: how, ops: 0, started: performance.now(), writing: false });
     try {
       // Sketch versions stay sketches; a new app follows the Sketch/App switch.
       if (base ? !!base.sketch : kind === 'sketch') {
         const sketched = await sketchPass(ask, base);
-        if (!sketched) return;
+        if (!sketched || stopped.current) return;
+        // A sketch runs as HTML and can't fail to open. Its DekaScript
+        // translation is kept as Make it real's working starting point.
         const compiled = compileSketch(sketched.sketch);
-        const error = await compileError(compiled.source);
+        const error = null;
         setVersions(list => [...list, { n, ask, basedOn: base?.n ?? null, source: compiled.source, sketch: sketched.sketch, ms: sketched.done.elapsed_ms, tokens: sketched.done.tokens, made: sketched.made, fixes: 0, error }]);
         setShown(n);
         if (!appName && compiled.name !== 'Untitled app') setAppName(compiled.name);
@@ -386,13 +411,14 @@ export default function Builder() {
       let { source, ms, tokens } = made;
       let fixes = 0;
       let error = await compileError(source);
-      while (error && fixes < MAX_FIXES) {
+      while (error && fixes < MAX_FIXES && !stopped.current) {
         setBuilding(state => state && { ...state, mode: 'fix', ops: 0, writing: false });
         const fixed = await rixsePass(fixRequest(error, source), source);
         if (!fixed) break;
         source = fixed.source; ms += fixed.done.elapsed_ms; tokens = addTokens(tokens, fixed.done.tokens); fixes += 1;
         error = await compileError(source);
       }
+      if (stopped.current) return;
       setVersions(list => [...list, { n, ask, basedOn: base?.n ?? null, ...made, source, ms, tokens, fixes, error }]);
       setShown(n);
       reportTiming({ label: made.made.how === 'rixse' ? 'Edited' : 'Built', ms, tokens });
@@ -406,9 +432,10 @@ export default function Builder() {
   const makeItReal = async () => {
     const base = current;
     if (!base?.sketch || !model || building) return;
+    stopped.current = false;
     const n = versions.length + 1;
     const ask = 'Make it real';
-    setFailure(null); setPreview('');
+    setFailure(null); setPreview(''); setPreviewIsSketch(false);
     setBuilding({ ask, basedOn: base.n, mode: 'full', ops: 0, started: performance.now(), writing: false });
     try {
       let answer = '';
@@ -418,10 +445,10 @@ export default function Builder() {
         const now = performance.now();
         if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(extractSource(answer)); }
       });
-      if (!done) return;
+      if (!done || stopped.current) return;
       let source = extractSource(answer), ms = done.elapsed_ms, tokens = done.tokens, fixes = 0;
       let error = await compileError(source);
-      while (error && fixes < MAX_FIXES) {
+      while (error && fixes < MAX_FIXES && !stopped.current) {
         setBuilding(state => state && { ...state, mode: 'fix', ops: 0, writing: false });
         const fixed = await rixsePass(fixRequest(error, source), source);
         if (!fixed) break;
@@ -465,7 +492,9 @@ export default function Builder() {
   // the version on screen, landing as a new version.
   const repair = async (error: string) => {
     const base = current;
-    if (!base || !model || building) return;
+    // Sketches run as HTML and never fail to compile; nothing to repair.
+    if (!base || base.sketch || !model || building) return;
+    stopped.current = false;
     const n = versions.length + 1;
     setFailure(null);
     setBuilding({ ask: 'Fix the problems', basedOn: base.n, mode: 'fix', ops: 0, started: performance.now(), writing: false });
@@ -473,18 +502,24 @@ export default function Builder() {
       let source = base.source, ms = 0, fixes = 0;
       let tokens: Tokens | null = null;
       let left: string | null = error;
-      while (left && fixes < MAX_FIXES + 1) {
+      while (left && fixes < MAX_FIXES + 1 && !stopped.current) {
         const fixed = await rixsePass(fixRequest(left, source), source);
         if (!fixed) break;
         source = fixed.source; ms += fixed.done.elapsed_ms; tokens = addTokens(tokens, fixed.done.tokens); fixes += 1;
         left = await compileError(source);
       }
+      if (stopped.current) return;
       setVersions(list => [...list, { n, ask: 'Fix the problems', basedOn: base.n, source, ms, tokens, made: { how: 'rixse', ops: fixes, missed: 0 }, fixes, error: left }]);
       setShown(n);
     } finally {
       setBuilding(null);
     }
   };
+
+  const buildingRef = useRef(building);
+  buildingRef.current = building;
+  const stopRef = useRef(stop);
+  stopRef.current = stop;
 
   const status = (b: Building) => b.mode === 'fix' ? `Fixing a compile error in v${versions.length + 1} · ${elapsed(b.started)}${b.writing ? ` · ${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : ''}…`
     : `${b.mode === 'rixse' ? 'Editing' : 'Building'} v${versions.length + 1}${b.basedOn ? ` from v${b.basedOn}` : ''} · ${elapsed(b.started)} · ${b.writing ? (b.mode === 'rixse' ? `${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : 'writing') : 'thinking'}…`;
@@ -542,9 +577,11 @@ export default function Builder() {
           {(['rixse', 'full'] as const).map(m => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} title={m === 'rixse' ? 'Edit the app in place' : 'Rewrite the whole app'}>{m === 'rixse' ? 'Edit' : 'Rewrite'}</button>)}
         </span>}
         {building && <span className="composer-timer" aria-live="off">{elapsed(building.started)}</span>}
-        <button type="submit" className="composer-send" disabled={!!building || !ask.trim() || !model} aria-label={building ? 'Building' : 'Build'} title="Build (Enter)">
-          {building ? <span className="composer-spin" aria-hidden="true" /> : <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>}
-        </button>
+        {building ? <button type="button" className="composer-send composer-stop" onClick={stop} aria-label="Stop" title="Stop (Esc)">
+          <span className="composer-spin" aria-hidden="true" /><i aria-hidden="true" />
+        </button> : <button type="submit" className="composer-send" disabled={!ask.trim() || !model} aria-label="Build" title="Build (Enter)">
+          <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>
+        </button>}
       </div>
     </form>
     <p className="composer-foot">
@@ -578,7 +615,10 @@ export default function Builder() {
           <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 4v5h-5" /></svg>
         </button>
       </> : null}>
-        {zoom => shownSource
+        {zoom => (building ? previewIsSketch && !!preview : !!current?.sketch)
+          ? <SketchPreview sketch={building ? preview : current!.sketch!} width={size[0]} height={size[1]} zoom={zoom} reload={reload}
+              onStatus={status => setPreviewStatus(status.kind === 'ok' ? { kind: 'ok' } : { kind: 'runtime', error: status.error })} />
+          : shownSource
           ? <DekaPreview source={shownSource} width={size[0]} height={size[1]} zoom={zoom} reload={reload} onStatus={setPreviewStatus}
               notOpened={<div className="not-opened">
                 <b>Almost there</b>

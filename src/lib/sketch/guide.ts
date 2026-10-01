@@ -11,21 +11,21 @@ data horses: Clover, 8, Connemara | Maple, 5, Fjord   (rows split by |, columns 
 transition: slide | fade | scale | none
 - header: Title | [Button] → action
 - title: Big text
-- text: Plain text, can show {likes} or {horses.1} (column 1 of the current horse)
+- text: Plain text, can show {likes}, {horses.1} (column 1 of the current horse), or maths: {bill * tip / 100}, {round((bill + bill * tip / 100) / people, 2)}  (round, min, max, abs, floor, ceil)
 - note: Small grey text
 - image: Caption
 - card: **Heading** · line two · line three
 - row: [Pass] → next horses | [Like]* → likes +1, next horses      (* = primary button)
 - button: [Start]* → Swipe
 - stat: Label | {likes}
-- list: horses → Profile          (one row per item of a data list)   or   list: Milk, Eggs, Bread
+- list: horses → Profile          (one row per item; tapping one makes it the current item, then goes to Profile)   or   list: Milk, Eggs, Bread
 - tabs: Swipe | Matches           (switches between screens)
-- input: Placeholder text         (shown as a field; typing isn't supported yet)
+- input: Bill amount → bill       (a real field: typing updates the state value bill, and everything showing {bill} updates live)
 - space
 
-Actions after →, separated by commas: a screen name (go there), back, likes +1, likes -1, mood = "happy", toggle open, next horses, prev horses.
+Actions after →, separated by commas: a screen name (go there), back, likes +1, likes -1, total = bill * 2, mood = "happy", toggle open, next horses, prev horses.
 
-For something the format can't say, put DekaScript JSX in a \`\`\`dsx fenced block inside the screen.`;
+Use only the blocks above: a sketch has no code. If something can't be expressed, describe it in a note: line; it gets built when the app is made real.`;
 
 export const SKETCH_INSTRUCTIONS = `You sketch desktop apps in a tiny Markdown format. Write the sketch fast: the whole app in a few screens, with real, specific content (never lorem ipsum), real behaviour wired with actions, and a fitting theme.
 

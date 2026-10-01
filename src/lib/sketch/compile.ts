@@ -25,9 +25,9 @@
 // Actions after →, comma separated: a screen name, back, x +1, x -1,
 // x = value, toggle x, next <data>, prev <data>.
 
-export type SketchResult = { name: string; source: string; screens: string[]; warnings: string[] };
+export type SketchResult = { name: string; source: string; screens: string[]; warnings: string[]; rawBlocks: number };
 
-type Palette = { bg: string; ink: string; card: string; soft: string; muted: string; accent: string; accentInk: string };
+export type Palette = { bg: string; ink: string; card: string; soft: string; muted: string; accent: string; accentInk: string };
 const THEMES: Record<string, Palette> = {
   warm: { bg: 'F6F1E7', ink: '1F1A14', card: 'FFFDF8', soft: 'EDE4D3', muted: '8A7F72', accent: 'C2512B', accentInk: 'FFFFFF' },
   dark: { bg: '14161B', ink: 'ECEEF2', card: '1E2129', soft: '2A2E38', muted: '8B92A1', accent: '7C9CFF', accentInk: '0E1016' },
@@ -38,9 +38,9 @@ const THEMES: Record<string, Palette> = {
 
 const MOTION: Record<string, string> = { slide: 'enter-slide duration-300', fade: 'enter-fade duration-300', scale: 'enter-scale duration-300', none: '' };
 
-type Block = { kind: string; body: string; line: number };
-type Screen = { name: string; transition: string; blocks: Block[]; raw: string[] };
-type Sketch = { name: string; theme: Palette; state: [string, string][]; data: Map<string, string[][]>; screens: Screen[]; warnings: string[] };
+export type Block = { kind: string; body: string; line: number };
+export type Screen = { name: string; transition: string; blocks: Block[]; raw: string[] };
+export type Sketch = { name: string; theme: Palette; state: [string, string][]; data: Map<string, string[][]>; screens: Screen[]; warnings: string[] };
 
 const ident = (text: string) => text.trim().replace(/[^A-Za-z0-9_]/g, '_').replace(/^(\d)/, '_$1') || 'value';
 const str = (text: string) => JSON.stringify(text);
@@ -88,7 +88,7 @@ export function parseSketch(markdown: string): Sketch {
 }
 
 /** Split on a separator that isn't inside [ ] or { }. */
-function splitTop(text: string, sep: string): string[] {
+export function splitTop(text: string, sep: string): string[] {
   const out: string[] = [];
   let depth = 0, current = '';
   for (const c of text) {
@@ -100,8 +100,10 @@ function splitTop(text: string, sep: string): string[] {
   return out.map(s => s.trim()).filter(Boolean);
 }
 
-export function compileSketch(markdown: string): SketchResult {
+/** `skipRaw`: indexes of ```dsx blocks to leave out (ones that don't compile). */
+export function compileSketch(markdown: string, skipRaw: Set<number> = new Set()): SketchResult {
   const sketch = parseSketch(markdown);
+  let rawIndex = 0;
   const p = sketch.theme;
   const warnings = [...sketch.warnings];
   const screens = sketch.screens.map(s => s.name);
@@ -113,6 +115,15 @@ export function compileSketch(markdown: string): SketchResult {
     const cleaned = body.replace(/\*\*(.+?)\*\*/g, '$1');
     return cleaned.split(/(\{[^}]+\})/).filter(Boolean).map(part => {
       const hole = part.match(/^\{\s*([\w]+)(?:\.(\d+))?\s*\}$/);
+      // Arithmetic on state: {bill * tip / 100}, {(bill + tip) / people}.
+      const sum = !hole && part.match(/^\{([\w\s.+\-*/()]+)\}$/);
+      if (sum) {
+        const names = sum[1].match(/[A-Za-z_]\w*/g) ?? [];
+        const unknown = names.filter(n => !stateNames.has(ident(n)));
+        if (!unknown.length) return `{${sum[1].replace(/[A-Za-z_]\w*/g, n => ident(n)).trim()}}`;
+        warnings.push(`unknown value in {${sum[1].trim()}}: ${unknown.join(', ')}`);
+        return part.replace(/[{}]/g, '');
+      }
       if (!hole) return part.replace(/[{}<>]/g, '');
       const [, name, col] = hole;
       if (col && sketch.data.has(name)) {
@@ -214,7 +225,8 @@ export function compileSketch(markdown: string): SketchResult {
   lines.push(`        <view className="w-full h-full bg-[#${p.bg}] text-[#${p.ink}] overflow-hidden">`);
   for (const s of sketch.screens) {
     const motion = MOTION[s.transition] ?? MOTION.slide;
-    const children = [...s.blocks.map(block), ...s.raw.map(r => r.trim())].map(c => `                ${c}`).join('\n');
+    const raws = s.raw.map(r => ({ code: r.trim(), index: rawIndex++ })).filter(r => !skipRaw.has(r.index)).map(r => r.code);
+    const children = [...s.blocks.map(block), ...raws].map(c => `                ${c}`).join('\n');
     lines.push(`            {screen == ${str(s.name)} ? <div className="w-full h-full p-6 gap-4 ${motion}">`);
     lines.push(children);
     lines.push('            </div> : None}');
@@ -222,5 +234,23 @@ export function compileSketch(markdown: string): SketchResult {
   lines.push('        </view>');
   lines.push('    );');
   lines.push('}');
-  return { name: sketch.name, source: lines.join('\n') + '\n', screens, warnings };
+  return { name: sketch.name, source: lines.join('\n') + '\n', screens, warnings, rawBlocks: rawIndex };
+}
+
+/**
+ * A sketch always opens: custom ```dsx blocks that don't compile are left out,
+ * one by one, keeping every block that does. `check` returns the compiler's
+ * error or null.
+ */
+export async function compileSketchSafely(markdown: string, check: (source: string) => Promise<string | null>): Promise<SketchResult & { dropped: number; error: string | null }> {
+  const first = compileSketch(markdown);
+  const error = await check(first.source);
+  if (!error || !first.rawBlocks) return { ...first, dropped: 0, error };
+  const skip = new Set(Array.from({ length: first.rawBlocks }, (_, i) => i));
+  for (let i = 0; i < first.rawBlocks; i++) {
+    skip.delete(i);
+    if (await check(compileSketch(markdown, skip).source)) skip.add(i);
+  }
+  const result = compileSketch(markdown, skip);
+  return { ...result, dropped: skip.size, error: await check(result.source), warnings: [...result.warnings, ...(skip.size ? [`${skip.size} custom ${skip.size === 1 ? 'part was' : 'parts were'} left out because ${skip.size === 1 ? 'it' : 'they'} didn't work`] : [])] };
 }

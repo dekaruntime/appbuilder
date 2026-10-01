@@ -566,3 +566,10 @@ p.bmsg-done { cursor: default; }
 .bmsg-sketch { align-self: stretch; }
 .bmsg-sketch summary { color: var(--soft); font-size: 12px; cursor: pointer; }
 .bmsg-sketch pre { margin: 6px 0 0; max-height: 280px; overflow: auto; padding: 10px 12px; border-radius: 8px; background: var(--tint); font: 12px/1.55 var(--mono); white-space: pre-wrap; }
+/* While building, the send button is Stop: a spinner ring around a square. */
+.composer-stop { position: relative; background: var(--ink); color: var(--panel); }
+.composer-stop .composer-spin { position: absolute; inset: 3px; width: auto; height: auto; border-width: 2px; opacity: .55; }
+.composer-stop i { width: 9px; height: 9px; border-radius: 2px; background: currentColor; }
+.sketch-preview { position: relative; overflow: hidden; background: #fff; }
+.sketch-preview iframe { display: block; border: 0; }
+.sketch-badge { position: absolute; right: 8px; bottom: 8px; padding: 2px 8px; border-radius: 999px; background: rgba(15, 17, 22, .6); color: #fff; font: 600 10.5px var(--sans); letter-spacing: .03em; pointer-events: none; }
