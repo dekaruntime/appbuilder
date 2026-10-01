@@ -11,6 +11,7 @@ import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, 
 import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
 import { compileError } from '../lib/deka/runtime';
 import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
+import { WINDOW_SIZES, readStartup } from '../lib/builder-startup';
 
 type Mode = 'full' | 'rixse';
 // How a version was made: written whole, edited by rixse ops, or rixse asking
@@ -46,7 +47,7 @@ const EXAMPLES = [
 const PREVIEW_EVERY_MS = 400;
 
 // The app's window sizes; the model designs for the chosen one.
-const SIZES = [[800, 600], [1024, 700], [1280, 800], [420, 640]] as const;
+const SIZES = WINDOW_SIZES;
 const DESKTOPS: { id: DesktopTheme; label: string }[] = [{ id: 'macos', label: 'macOS' }, { id: 'windows', label: 'Windows' }, { id: 'omarchy', label: 'Omarchy' }];
 
 export default function Builder() {
@@ -64,7 +65,13 @@ export default function Builder() {
   const [desktop, setDesktop] = useState<DesktopTheme>('macos');
   const [size, setSize] = useState<readonly [number, number]>(SIZES[1]);
   const [appName, setAppName] = useState('');
-  useEffect(() => { setDesktop(defaultDesktop()); }, []);
+  // Startup choices from Settings: side panel, desktop and window size.
+  useEffect(() => {
+    const startup = readStartup();
+    setDesktop(startup.desktop === 'auto' ? defaultDesktop() : startup.desktop);
+    setSize(SIZES.find(s => s.join('x') === startup.size) ?? SIZES[1]);
+    setSide(startup.side);
+  }, []);
   // The app's folder on disk (~/Documents/Zega Apps/<name>), what the builder
   // last wrote there, and the terminal that opens in it.
   const [projectPath, setProjectPath] = useState<string | null>(null);

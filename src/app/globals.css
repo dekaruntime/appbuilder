@@ -461,3 +461,5 @@ p.bmsg-done { cursor: default; }
 .bapp-run:disabled { opacity: .4; cursor: default; }
 .bapp-run + .bapp-term { margin-left: 0; }
 .bapp-term kbd { margin-left: 4px; font: 10.5px var(--mono); opacity: .6; }
+.builder-settings label { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 460px; padding: 6px 0; font-size: 14px; }
+.builder-settings select { min-width: 220px; padding: 4px 6px; border: 1px solid var(--edge); border-radius: 4px; background: var(--panel); color: var(--ink); font: 13px var(--sans); }
