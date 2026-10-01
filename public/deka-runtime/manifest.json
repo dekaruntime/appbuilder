@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "abiVersion": 1,
+  "runtime": "deka_vm",
+  "version": "0.60.1",
+  "source": "https://github.com/dekaruntime/deka",
+  "commit": "c5304ec30bdad7e31f8326b378b4ed475920cef5",
+  "compilerCommit": "c5304ec30bdad7e31f8326b378b4ed475920cef5",
+  "wasmBindgen": "0.2.128",
+  "cargoLockSha256": "537da3bf01a5b4016a1df8af6763e041e05efc385f8f68411a9fc50e8fd806c2",
+  "files": {
+    "deka_native_web.js": {
+      "bytes": 14848,
+      "sha256": "5f277db0abc99917e149a7c19e8ae3bc362292486e2156ee1ea265d8708f1c04"
+    },
+    "deka_native_web.d.ts": {
+      "bytes": 4386,
+      "sha256": "81155eec94f769833ecc03491d553e98d40dcc3e4101f890a4d2cffcb6a1097e"
+    },
+    "deka_native_web_bg.wasm": {
+      "bytes": 1577424,
+      "sha256": "e86458943210e686c706bf26b38a5d88c2215073e85e84e811a652f939542bb8"
+    },
+    "font-OFL.txt": {
+      "bytes": 4351,
+      "sha256": "64b9cae8727cb41ea9e8843103e69647c82383f3a902e2bb39b2c5d92083b6e1"
+    }
+  }
+}
