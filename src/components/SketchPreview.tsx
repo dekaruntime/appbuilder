@@ -17,10 +17,9 @@ export default function SketchPreview({ sketch, width, height, zoom, reload = 0,
   const [stalled, setStalled] = useState(false);
   useEffect(() => {
     setStarted(false); setStalled(false);
-    if (!html) return;
-    const timer = setTimeout(() => setStalled(true), 1500);
+    const timer = setTimeout(() => setStalled(true), 2500);
     return () => clearTimeout(timer);
-  }, [html, reload]);
+  }, [sketch, reload]);
   const frame = useRef<HTMLIFrameElement>(null);
   const report = useRef(onStatus);
   report.current = onStatus;
@@ -45,7 +44,7 @@ export default function SketchPreview({ sketch, width, height, zoom, reload = 0,
     {html && <iframe ref={frame} key={reload} title="Sketch" sandbox="allow-scripts" srcDoc={html}
       style={{ width, height, transform: `scale(${zoom})`, transformOrigin: '0 0' }} />}
     {failure && <p className="deka-preview-status" role="status">{failure}</p>}
-    {!failure && stalled && !started && <p className="deka-preview-status" role="status">This sketch couldn't start. Try the refresh button below; if it stays blank, tell us what you asked for.</p>}
+    {!failure && stalled && !started && <p className="deka-preview-status" role="status">{html ? "This sketch couldn't start. Try the refresh button below." : "This sketch couldn't be drawn. Try the refresh button below."}</p>}
     <span className="sketch-badge" title="This is a sketch: it runs as HTML. Make it real to run it on deka.">Sketch</span>
   </div>;
 }
