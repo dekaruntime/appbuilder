@@ -70,8 +70,13 @@ pub const FOLDER_TAKEN: &str = "folder-taken";
 /// id). `create` makes the folder exclusively: a new app never reuses one.
 #[tauri::command]
 #[allow(clippy::too_many_arguments)] // one field per thing the builder saves, straight from the IPC call
-pub fn project_save(app: tauri::AppHandle, folder: String, name: String, source: String, width: u32, height: u32, agents: String, create: bool) -> Result<ProjectFile> {
-    write_project(&apps_root(&app)?, &folder, &name, &source, (width, height), &agents, create)
+pub fn project_save(app: tauri::AppHandle, folder: String, name: String, source: String, width: u32, height: u32, agents: String, create: bool, sketch: Option<String>) -> Result<ProjectFile> {
+    let file = write_project(&apps_root(&app)?, &folder, &name, &source, (width, height), &agents, create)?;
+    // A sketch version also keeps its Markdown, the thing a person edits.
+    if let Some(sketch) = sketch {
+        fs::write(Path::new(&file.path).join("sketch.md"), sketch).map_err(|e| format!("Could not save sketch.md: {e}"))?;
+    }
+    Ok(file)
 }
 
 fn write_project(root: &Path, folder: &str, name: &str, source: &str, (width, height): (u32, u32), agents: &str, create: bool) -> Result<ProjectFile> {

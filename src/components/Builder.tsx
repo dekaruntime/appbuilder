@@ -11,6 +11,8 @@ import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/c
 import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
 import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
 import { compileError } from '../lib/deka/runtime';
+import { compileSketch } from '../lib/sketch/compile';
+import { SKETCH_EDIT_INSTRUCTIONS, SKETCH_INSTRUCTIONS, extractSketch, realRequest, sketchEditRequest, sketchRequest } from '../lib/sketch/guide';
 import { problemsLabel, runtimeLabel } from '../lib/deka/plain';
 import { formatMs, formatTokens, reportTiming, useLastTiming, type Tokens } from '../lib/timing';
 import { HARNESSES, WINDOW_SIZES, readStartup, type Harness } from '../lib/builder-startup';
@@ -21,7 +23,9 @@ type Mode = 'full' | 'rixse';
 // for a rewrite because the change rebuilt most of the app.
 type Made = { how: 'full' } | { how: 'rixse'; ops: number; missed: number } | { how: 'escalated' } | { how: 'outside' };
 // fixes: compile errors the model repaired on its own; error: one it couldn't.
-type Version = { n: number; ask: string; source: string; basedOn: number | null; ms: number; tokens: Tokens | null; made: Made; fixes: number; error: string | null };
+// sketch: the Markdown sketch a sketch version was made from (source is then
+// the DekaScript compiled from it).
+type Version = { n: number; ask: string; source: string; sketch?: string; basedOn: number | null; ms: number; tokens: Tokens | null; made: Made; fixes: number; error: string | null };
 // "thinking" until the first word of the answer arrives (reasoning models can
 // think for minutes), then "writing"; "fixing" while a compile error is repaired.
 type Building = { ask: string; basedOn: number | null; mode: Mode | 'fix'; ops: number; started: number; writing: boolean };
@@ -63,6 +67,8 @@ export default function Builder() {
   const [preview, setPreview] = useState('');
   const [ask, setAsk] = useState('');
   const [mode, setMode] = useState<Mode>('rixse');
+  // What a new idea starts as: a quick sketch, or a full app.
+  const [kind, setKind] = useState<'sketch' | 'app'>('sketch');
   const [, setTick] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
   const lastTiming = useLastTiming();
@@ -145,7 +151,7 @@ export default function Builder() {
       try {
         const file = await invoke<{ path: string; modified_ms: number | null }>('project_save', {
           folder: app.current.id, name: appName || app.current.id, source: current.source,
-          width: size[0], height: size[1], agents: agentsFile(appName || app.current.id), create: !app.current.created,
+          width: size[0], height: size[1], agents: agentsFile(appName || app.current.id), create: !app.current.created, sketch: current.sketch ?? null,
         });
         app.current.created = true;
         written.current = { source: current.source, modified: file.modified_ms };
@@ -290,13 +296,15 @@ export default function Builder() {
 
   // rixse: the whole source goes in, replace ops come back and are applied to
   // the source as they arrive, so the running app changes in place.
-  const rixsePass = async (question: string, base: string) => {
+  // `show` turns the edited text into what the preview runs (a sketch compiles
+  // to DekaScript first).
+  const rixsePass = async (question: string, base: string, instructions = DEKA_EDIT_INSTRUCTIONS, show = (text: string) => text) => {
     let source = base;
     let buffer = '';
     let ops = 0, missed = 0, full = false;
     lastDraw.current = 0;
-    setPreview(base);
-    const done = await request(question, DEKA_EDIT_INSTRUCTIONS, text => {
+    setPreview(show(base));
+    const done = await request(question, instructions, text => {
       const taken = jsonObjects(buffer + text);
       buffer = taken.rest;
       for (const raw of taken.objects) {
@@ -309,9 +317,29 @@ export default function Builder() {
       }
       setBuilding(state => state && { ...state, ops });
       const now = performance.now();
-      if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(source); }
+      if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(show(source)); }
     });
     return done && { source, done, ops, missed, full };
+  };
+
+  // A sketch round: the model writes or edits sketch.md; the app compiles it
+  // to DekaScript (it always compiles) and runs it. Streams into the preview.
+  const sketchPass = async (ask: string, base: Version | null) => {
+    const compiled = (sketch: string) => compileSketch(sketch).source;
+    if (base?.sketch) {
+      const edited = await rixsePass(sketchEditRequest(ask, base.sketch), base.sketch, SKETCH_EDIT_INSTRUCTIONS, compiled);
+      if (edited && !edited.full) return { sketch: edited.source, done: edited.done, made: { how: 'rixse', ops: edited.ops, missed: edited.missed } as Made };
+      if (!edited) return null;
+    }
+    let answer = '';
+    lastDraw.current = 0;
+    const question = base?.sketch ? `Current sketch (sketch.md):\n\n${base.sketch}\n\nRewrite the sketch with this change: ${ask}` : sketchRequest(ask);
+    const done = await request(question, SKETCH_INSTRUCTIONS, text => {
+      answer += text;
+      const now = performance.now();
+      if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(compiled(extractSketch(answer))); }
+    });
+    return done && { sketch: extractSketch(answer), done, made: { how: 'full' } as Made };
   };
 
   // fresh: a new app from nothing, ignoring the version on screen.
@@ -327,6 +355,18 @@ export default function Builder() {
     setAsk(''); setFailure(null); setPreview('');
     setBuilding({ ask, basedOn: base?.n ?? null, mode: how, ops: 0, started: performance.now(), writing: false });
     try {
+      // Sketch versions stay sketches; a new app follows the Sketch/App switch.
+      if (base ? !!base.sketch : kind === 'sketch') {
+        const sketched = await sketchPass(ask, base);
+        if (!sketched) return;
+        const compiled = compileSketch(sketched.sketch);
+        const error = await compileError(compiled.source);
+        setVersions(list => [...list, { n, ask, basedOn: base?.n ?? null, source: compiled.source, sketch: sketched.sketch, ms: sketched.done.elapsed_ms, tokens: sketched.done.tokens, made: sketched.made, fixes: 0, error }]);
+        setShown(n);
+        if (!appName && compiled.name !== 'Untitled app') setAppName(compiled.name);
+        reportTiming({ label: 'Sketched', ms: sketched.done.elapsed_ms, tokens: sketched.done.tokens });
+        return;
+      }
       let made: Omit<Version, 'n' | 'ask' | 'basedOn' | 'fixes' | 'error'> | null = null;
       if (how === 'rixse' && base) {
         const edited = await rixsePass(editRequest(ask, base.source), base.source);
@@ -356,6 +396,41 @@ export default function Builder() {
       setVersions(list => [...list, { n, ask, basedOn: base?.n ?? null, ...made, source, ms, tokens, fixes, error }]);
       setShown(n);
       reportTiming({ label: made.made.how === 'rixse' ? 'Edited' : 'Built', ms, tokens });
+    } finally {
+      setBuilding(null);
+    }
+  };
+
+  // "Make it real": the sketch is the spec for a full DekaScript app, built the
+  // normal way (including the compile-error fixes).
+  const makeItReal = async () => {
+    const base = current;
+    if (!base?.sketch || !model || building) return;
+    const n = versions.length + 1;
+    const ask = 'Make it real';
+    setFailure(null); setPreview('');
+    setBuilding({ ask, basedOn: base.n, mode: 'full', ops: 0, started: performance.now(), writing: false });
+    try {
+      let answer = '';
+      lastDraw.current = 0;
+      const done = await request(`${realRequest(base.sketch, base.source)}\n\nThe app window is ${size[0]}×${size[1]}; lay it out for that size.`, DEKA_APP_INSTRUCTIONS, text => {
+        answer += text;
+        const now = performance.now();
+        if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(extractSource(answer)); }
+      });
+      if (!done) return;
+      let source = extractSource(answer), ms = done.elapsed_ms, tokens = done.tokens, fixes = 0;
+      let error = await compileError(source);
+      while (error && fixes < MAX_FIXES) {
+        setBuilding(state => state && { ...state, mode: 'fix', ops: 0, writing: false });
+        const fixed = await rixsePass(fixRequest(error, source), source);
+        if (!fixed) break;
+        source = fixed.source; ms += fixed.done.elapsed_ms; tokens = addTokens(tokens, fixed.done.tokens); fixes += 1;
+        error = await compileError(source);
+      }
+      setVersions(list => [...list, { n, ask, basedOn: base.n, source, ms, tokens, made: { how: 'full' }, fixes, error }]);
+      setShown(n);
+      reportTiming({ label: 'Built', ms, tokens });
     } finally {
       setBuilding(null);
     }
@@ -430,8 +505,9 @@ export default function Builder() {
       {versions.map(v => <div key={v.n} className="bmsg">
         <p className="bmsg-ask">{v.ask}</p>
         <button type="button" className="bmsg-done" aria-pressed={shown === v.n} onClick={() => setShown(v.n)}>
-          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}{v.fixes ? ` · fixed ${v.fixes} ${v.fixes === 1 ? 'problem' : 'problems'}` : ''}
+          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.sketch ? (v.basedOn ? `sketch · ${madeLabel(v.made)}` : 'sketch') : v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}{v.fixes ? ` · fixed ${v.fixes} ${v.fixes === 1 ? 'problem' : 'problems'}` : ''}
         </button>
+        {v.sketch && <details className="bmsg-sketch"><summary>View the sketch</summary><pre>{v.sketch}</pre></details>}
         {v.error && <div className="bmsg-error" role="alert">
           <p>This version has {problemsLabel(v.error)} that couldn't be fixed automatically, so it can't open yet.</p>
           <div className="bmsg-error-actions">
@@ -449,7 +525,7 @@ export default function Builder() {
     </div>
     <form className="composer" onSubmit={event => { event.preventDefault(); void build(ask); }}>
       <textarea aria-label="Describe the app" rows={2} value={ask} onChange={event => setAsk(event.target.value)}
-        placeholder={current ? `Change v${current.n}…` : 'Describe an app…'}
+        placeholder={current ? `Change v${current.n}…` : kind === 'sketch' ? 'Sketch an app idea…' : 'Describe an app…'}
         onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void build(ask); } }} />
       <div className="composer-bar">
         <label className="composer-model">
@@ -458,7 +534,11 @@ export default function Builder() {
             {models.map(m => <option key={m.slug} value={m.slug}>{m.display_name}</option>)}
           </select>
         </label>
-        {current && <span className="composer-mode" role="group" aria-label="How changes are made">
+        {!current && <span className="composer-mode" role="group" aria-label="Start as">
+          {(['sketch', 'app'] as const).map(k => <button key={k} type="button" aria-pressed={kind === k} onClick={() => setKind(k)} title={k === 'sketch' ? 'A quick, clickable sketch in seconds' : 'A full app straight away'}>{k === 'sketch' ? 'Sketch' : 'App'}</button>)}
+        </span>}
+        {current?.sketch && <button type="button" className="composer-real" disabled={!!building} onClick={() => void makeItReal()} title="Build a full app from this sketch">Make it real</button>}
+        {current && !current.sketch && <span className="composer-mode" role="group" aria-label="How changes are made">
           {(['rixse', 'full'] as const).map(m => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} title={m === 'rixse' ? 'Edit the app in place' : 'Rewrite the whole app'}>{m === 'rixse' ? 'Edit' : 'Rewrite'}</button>)}
         </span>}
         {building && <span className="composer-timer" aria-live="off">{elapsed(building.started)}</span>}
