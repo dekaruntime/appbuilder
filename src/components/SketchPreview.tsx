@@ -11,6 +11,16 @@ export default function SketchPreview({ sketch, width, height, zoom, reload = 0,
 }) {
   const [html, setHtml] = useState<string | null>(null);
   const [failure, setFailure] = useState<string | null>(null);
+  // The sketch's runtime says "ready" once it has drawn. If it never does
+  // (blocked or broken), say so instead of leaving a blank window.
+  const [started, setStarted] = useState(false);
+  const [stalled, setStalled] = useState(false);
+  useEffect(() => {
+    setStarted(false); setStalled(false);
+    if (!html) return;
+    const timer = setTimeout(() => setStalled(true), 1500);
+    return () => clearTimeout(timer);
+  }, [html, reload]);
   const frame = useRef<HTMLIFrameElement>(null);
   const report = useRef(onStatus);
   report.current = onStatus;
@@ -24,6 +34,7 @@ export default function SketchPreview({ sketch, width, height, zoom, reload = 0,
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || !event.data?.zegaSketch) return;
+      if (event.data.zegaSketch === 'ready') setStarted(true);
       report.current?.(event.data.zegaSketch === 'error' ? { kind: 'runtime', error: event.data.detail } : { kind: 'ok' });
     };
     addEventListener('message', onMessage);
@@ -34,6 +45,7 @@ export default function SketchPreview({ sketch, width, height, zoom, reload = 0,
     {html && <iframe ref={frame} key={reload} title="Sketch" sandbox="allow-scripts" srcDoc={html}
       style={{ width, height, transform: `scale(${zoom})`, transformOrigin: '0 0' }} />}
     {failure && <p className="deka-preview-status" role="status">{failure}</p>}
+    {!failure && stalled && !started && <p className="deka-preview-status" role="status">This sketch couldn't start. Try the refresh button below; if it stays blank, tell us what you asked for.</p>}
     <span className="sketch-badge" title="This is a sketch: it runs as HTML. Make it real to run it on deka.">Sketch</span>
   </div>;
 }
