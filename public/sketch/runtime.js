@@ -53,39 +53,99 @@ const el = (tag, cls, text) => { const e = document.createElement(tag); if (cls)
 function btn(b) { const e = el('button', b.primary ? 'primary' : '', fill(b.label)); e.addEventListener('click', () => run(b.actions)); return e; }
 
 let shown = null;
+
+// @width 1/3 | 320, @height 200, @align left|center|right, @gap tight|loose,
+// @grow, @scroll, @sticky — applied through the CSSOM (no inline style text).
+function applyMods(e, m) {
+  if (!m) return;
+  if (m.width) { const f = m.width.match(/^(\d+)\/(\d+)$/); e.style.width = f ? (100 * f[1] / f[2]) + '%' : (/^\d+$/.test(m.width) ? m.width + 'px' : ''); e.style.flex = 'none'; }
+  if (m.height && /^\d+$/.test(m.height)) e.style.height = m.height + 'px';
+  if (m.align) { const a = { left: 'flex-start', start: 'flex-start', center: 'center', right: 'flex-end', end: 'flex-end' }[m.align.trim()]; if (a) { e.style.alignSelf = a; e.style.textAlign = m.align.trim() === 'center' ? 'center' : ''; } }
+  if (m.gap) e.style.gap = { tight: '6px', normal: '14px', loose: '26px' }[m.gap.trim()] || '';
+  if (m.grow) e.style.flex = '1 1 0';
+  if (m.scroll) { e.style.overflowY = 'auto'; e.style.minHeight = '0'; }
+  if (m.sticky) { e.style.position = 'sticky'; e.style.top = '0'; e.style.zIndex = '1'; }
+}
+
+function draw(n, index) {
+  let e;
+  if (n.t === 'title') e = el('h1', '', fill(n.text));
+  else if (n.t === 'subtitle') e = el('h3', '', fill(n.text));
+  else if (n.t === 'text') e = el('p', '', fill(n.text));
+  else if (n.t === 'note') e = el('p', 'note', fill(n.text));
+  else if (n.t === 'image') e = el('div', 'image', fill(n.text));
+  else if (n.t === 'space') e = el('div', 'space');
+  else if (n.t === 'header') { e = el('div', 'header'); e.append(el('h2', '', fill(n.title))); const r = el('div', 'row'); n.buttons.forEach(b => r.append(btn(b))); e.append(r); }
+  else if (n.t === 'row') { e = el('div', 'row'); n.buttons.forEach(b => e.append(btn(b))); }
+  else if (n.t === 'card') { e = el('div', 'card'); e.append(el('b', '', fill(n.head))); n.lines.forEach(l => e.append(el('span', '', fill(l)))); }
+  else if (n.t === 'tile') {
+    e = el('button', 'tile'); e.append(el('b', '', fill(n.head))); n.lines.forEach(l => e.append(el('span', '', fill(l))));
+    e.addEventListener('click', () => run(n.actions, index));
+  }
+  else if (n.t === 'stat') { e = el('div', 'stat'); e.append(el('span', '', fill(n.label)), el('b', '', fill(n.value))); }
+  else if (n.t === 'input') {
+    e = el('input'); e.placeholder = fill(n.placeholder);
+    if (n.bind) { e.dataset.bind = n.bind; e.value = state[n.bind] === undefined ? '' : String(state[n.bind]); if (n.numeric) e.inputMode = 'decimal';
+      e.addEventListener('input', () => { state[n.bind] = n.numeric ? (Number(e.value) || 0) : e.value; update(); }); }
+  }
+  else if (n.t === 'tabs') { e = el('div', 'tabs'); n.items.forEach(it => { const b = el('button', it.screen === screen ? 'on' : '', fill(it.label)); if (it.screen) b.addEventListener('click', () => run([{ go: it.screen }])); e.append(b); }); }
+  else if (n.t === 'list') {
+    e = el('div', 'list');
+    if (n.data) spec.data[n.data].forEach((row, i) => { const b = el('button', i === cursor[n.data] ? 'on' : '', row.join(' · ')); b.addEventListener('click', () => run(n.actions, i)); e.append(b); });
+    else n.items.forEach(item => e.append(el('div', '', fill(item))));
+  }
+  else if (n.t === 'table') {
+    e = el('div', 'table-wrap'); const t = el('table');
+    const cellEl = (c, tag) => { const td = el(tag); if (c.button) td.append(btn(c.button)); else td.textContent = fill(c.text); return td; };
+    if (n.header.length) { const tr = el('tr'); n.header.forEach(c => tr.append(cellEl(c, 'th'))); const head = el('thead'); head.append(tr); t.append(head); }
+    const body = el('tbody'); n.rows.forEach(r => { const tr = el('tr'); r.forEach(c => tr.append(cellEl(c, 'td'))); body.append(tr); }); t.append(body);
+    e.append(t);
+  }
+  else if (n.t === 'box') {
+    e = el('div', 'box ' + n.kind);
+    if (n.kind === 'grid') e.style.gridTemplateColumns = 'repeat(' + Math.max(1, n.cols) + ', minmax(0, 1fr))';
+    n.children.forEach(c => drawInto(e, c));
+  }
+  else e = el('p', '', '');
+  applyMods(e, n.mods);
+  return e;
+}
+
+// A block with `from <data>` is drawn once per row, each with that row as
+// the current item (so {menu.1} and → pick refer to it).
+function drawInto(parent, n) {
+  if (!n.from) { parent.append(draw(n)); return; }
+  const rows = spec.data[n.from] || [];
+  const saved = cursor[n.from];
+  rows.forEach((_, i) => { cursor[n.from] = i; parent.append(draw(n, i)); });
+  cursor[n.from] = saved;
+}
+
 function render() {
   const app = document.getElementById('app');
   const s = spec.screens.find(x => x.name === screen) || spec.screens[0];
   if (!s) return;
   const focused = document.activeElement && document.activeElement.dataset ? document.activeElement.dataset.bind : null;
-  const scroll = app.firstChild ? app.firstChild.scrollTop : 0;
+  const scrolls = [...app.querySelectorAll('.region')].map(r => r.scrollTop);
   const root = el('div', 'screen' + (shown !== s.name && s.transition !== 'none' ? ' ' + s.transition : ''));
-  for (const n of s.nodes) {
-    if (n.t === 'title') root.append(el('h1', '', fill(n.text)));
-    else if (n.t === 'text') root.append(el('p', '', fill(n.text)));
-    else if (n.t === 'note') root.append(el('p', 'note', fill(n.text)));
-    else if (n.t === 'image') root.append(el('div', 'image', fill(n.text)));
-    else if (n.t === 'space') root.append(el('div', 'space'));
-    else if (n.t === 'header') { const h = el('div', 'header'); h.append(el('h2', '', fill(n.title))); const r = el('div', 'row'); n.buttons.forEach(b => r.append(btn(b))); h.append(r); root.append(h); }
-    else if (n.t === 'row') { const r = el('div', 'row'); n.buttons.forEach(b => r.append(btn(b))); root.append(r); }
-    else if (n.t === 'card') { const c = el('div', 'card'); c.append(el('b', '', fill(n.head))); n.lines.forEach(l => c.append(el('span', '', fill(l)))); root.append(c); }
-    else if (n.t === 'stat') { const c = el('div', 'stat'); c.append(el('span', '', fill(n.label)), el('b', '', fill(n.value))); root.append(c); }
-    else if (n.t === 'input') {
-      const i = el('input'); i.placeholder = fill(n.placeholder);
-      if (n.bind) { i.dataset.bind = n.bind; i.value = state[n.bind] === undefined ? '' : String(state[n.bind]); if (n.numeric) i.inputMode = 'decimal';
-        i.addEventListener('input', () => { state[n.bind] = n.numeric ? (Number(i.value) || 0) : i.value; update(); }); }
-      root.append(i);
-    }
-    else if (n.t === 'tabs') { const t = el('div', 'tabs'); n.items.forEach(it => { const b = el('button', it.screen === screen ? 'on' : '', fill(it.label)); if (it.screen) b.addEventListener('click', () => run([{ go: it.screen }])); t.append(b); }); root.append(t); }
-    else if (n.t === 'list') {
-      const l = el('div', 'list');
-      if (n.data) spec.data[n.data].forEach((row, index) => { const b = el('button', index === cursor[n.data] ? 'on' : '', row.join(' · ')); b.addEventListener('click', () => run(n.actions, index)); l.append(b); });
-      else n.items.forEach(item => l.append(el('div', '', fill(item))));
-      root.append(l);
-    }
+  // layout: sidebar right 340 | sidebar left 300 | centered 480 | split
+  const layout = (s.layout || '').split(/\s+/);
+  const main = el('div', 'region main');
+  s.nodes.forEach(n => drawInto(main, n));
+  if (layout[0] === 'sidebar' || layout[0] === 'split' || (s.side && s.side.length)) {
+    root.classList.add('with-side');
+    const side = el('div', 'region side');
+    (s.side || []).forEach(n => drawInto(side, n));
+    const width = layout.find(w => /^\d+$/.test(w));
+    if (layout[0] === 'split') { side.style.flex = '1 1 0'; main.style.flex = '1 1 0'; }
+    else if (width) side.style.width = width + 'px';
+    if (layout.includes('left')) root.append(side, main); else root.append(main, side);
+  } else {
+    if (layout[0] === 'centered') { const w = layout.find(x => /^\d+$/.test(x)) || '520'; main.style.maxWidth = w + 'px'; main.style.marginInline = 'auto'; main.style.width = '100%'; }
+    root.append(main);
   }
   app.replaceChildren(root);
-  if (shown === s.name) root.scrollTop = scroll;
+  if (shown === s.name) [...root.querySelectorAll('.region')].forEach((r, i) => { r.scrollTop = scrolls[i] || 0; });
   shown = s.name;
   if (focused) { const again = root.querySelector('[data-bind="' + focused + '"]'); if (again) { again.focus(); const v = again.value; again.setSelectionRange(v.length, v.length); } }
 }

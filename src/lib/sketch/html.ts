@@ -7,14 +7,16 @@
 //   never eval or Function;
 // - the document's CSP allows no network at all, and the iframe has no
 //   same-origin access, so a sketch can't reach the app, its IPC or files.
-import { parseSketch, splitTop, type Palette } from './compile';
+import { parseSketch, splitTop, type Block, type Palette } from './compile';
 
 export type SketchHtml = { name: string; html: string; screens: string[]; warnings: string[] };
 
 type Action = { go: string } | { back: true } | { add: string; by: number } | { set: string; expr: string } | { toggle: string } | { step: string; by: 1 | -1 } | { pick: string };
 type Btn = { label: string; primary: boolean; actions: Action[] };
-type Node =
-  | { t: 'title' | 'text' | 'note' | 'image'; text: string }
+// Layout constraints any block can carry: @width 1/3, @align center, …
+type Mods = { width?: string; height?: string; align?: string; gap?: string; grow?: boolean; scroll?: boolean; sticky?: boolean };
+type Node = (
+  | { t: 'title' | 'subtitle' | 'text' | 'note' | 'image'; text: string }
   | { t: 'space' }
   | { t: 'header'; title: string; buttons: Btn[] }
   | { t: 'row'; buttons: Btn[] }
@@ -22,7 +24,12 @@ type Node =
   | { t: 'stat'; label: string; value: string }
   | { t: 'input'; placeholder: string; bind: string | null; numeric: boolean }
   | { t: 'tabs'; items: { label: string; screen: string | null }[] }
-  | { t: 'list'; data: string | null; items: string[]; actions: Action[] };
+  | { t: 'list'; data: string | null; items: string[]; actions: Action[] }
+  | { t: 'box'; kind: 'grid' | 'row' | 'columns' | 'stack' | 'panel'; cols: number; children: Node[] }
+  | { t: 'tile'; head: string; lines: string[]; actions: Action[] }
+  | { t: 'table'; header: Cell[]; rows: Cell[][] }) & { mods?: Mods; from?: string };
+// A table cell: text with {values}, or a button.
+type Cell = { text: string } | { button: Btn };
 
 export function compileSketchHtml(markdown: string): SketchHtml {
   const sketch = parseSketch(markdown);
@@ -52,8 +59,59 @@ export function compileSketchHtml(markdown: string): SketchHtml {
   const buttons = (body: string) => splitTop(body, '|').map(button).filter((b): b is Btn => !!b);
   const clean = (text: string) => text.replace(/\*\*(.+?)\*\*/g, '$1').trim();
 
-  const node = (kind: string, body: string, line: number): Node => {
+  const MOD = /\s*@(width|height|align|gap|grow|scroll|sticky)\b\s*([^@]*)/gi;
+  const mods = (body: string): [string, Mods | undefined] => {
+    const found: Mods = {};
+    let any = false;
+    const rest = body.replace(MOD, (_, key: string, value: string) => {
+      any = true;
+      const v = value.trim();
+      if (key === 'grow' || key === 'scroll' || key === 'sticky') found[key as 'grow'] = true;
+      else found[key as 'width'] = v;
+      return ' ';
+    }).trim();
+    return [rest, any ? found : undefined];
+  };
+  const cell = (text: string): Cell => { const b = button(text); return b ? { button: b } : { text: clean(text) }; };
+  // A component use: "- MenuItem: Classic, 4, Peeled" → its blocks with
+  // {name} {price} {note} replaced by the arguments.
+  const expand = (b: Block, depth: number): Node => {
+    const c = sketch.components.get(b.kind)!;
+    const [args, m] = mods(b.body);
+    const values = splitTop(args, ',');
+    const substitute = (blk: Block): Block => ({ ...blk, body: c.params.reduce((t, p, i) => t.replace(new RegExp(`\\{${p}\\}`, 'g'), values[i] ?? ''), blk.body), children: blk.children.map(substitute) });
+    const made: Node = { t: 'box', kind: 'stack', cols: 1, children: depth > 8 ? [] : c.blocks.map(substitute).map(x => build(x, depth + 1)) };
+    if (m) made.mods = m;
+    if (b.from) made.from = b.from;
+    return made;
+  };
+  const build = (b: Block, depth = 0): Node => {
+    if (sketch.components.has(b.kind)) return expand(b, depth);
+    const [body, m] = mods(b.body);
+    const made = node(b.kind, body, b.line, b);
+    if (m) made.mods = m;
+    if (b.from) {
+      if (sketch.data.has(b.from)) made.from = b.from;
+      else warnings.push(`line ${b.line}: no data list called "${b.from}"`);
+    }
+    return made;
+  };
+  const node = (kind: string, body: string, line: number, b: Block): Node => {
     switch (kind) {
+      case 'subtitle': return { t: 'subtitle', text: clean(body) };
+      case 'grid': case 'row': case 'columns': case 'stack': case 'panel': {
+        const cols = Number(body.match(/\d+/)?.[0] ?? (kind === 'columns' ? Math.max(1, b.children.length) : 3));
+        return { t: 'box', kind, cols, children: b.children.map(child => build(child)) };
+      }
+      case 'tile': {
+        const m = body.match(/^(.*?)\s*(?:→|->)\s*(.+)$/);
+        const [head, ...rest] = (m ? m[1] : body).split('·').map(clean);
+        return { t: 'tile', head: head ?? '', lines: rest, actions: m ? actions(m[2], b.from) : [] };
+      }
+      case 'table': {
+        const [header = [], ...rows] = b.rows ?? [];
+        return { t: 'table', header: header.map(cell), rows: rows.map((r: string[]) => r.map(cell)) };
+      }
       case 'title': case 'text': case 'note': return { t: kind, text: clean(body) };
       case 'image': case 'photo': return { t: 'image', text: clean(body) || 'Image' };
       case 'space': return { t: 'space' };
@@ -83,7 +141,7 @@ export function compileSketchHtml(markdown: string): SketchHtml {
     name: sketch.name,
     state: Object.fromEntries(sketch.state.map(([k, v]) => [k, /^-?\d+(\.\d+)?$/.test(v) ? Number(v) : v.replace(/^"|"$/g, '')])),
     data: Object.fromEntries(sketch.data),
-    screens: sketch.screens.map(s => ({ name: s.name, transition: s.transition, nodes: s.blocks.map(b => node(b.kind, b.body, b.line)) })),
+    screens: sketch.screens.map(s => ({ name: s.name, transition: s.transition, layout: s.layout, nodes: s.blocks.map(b => build(b)), side: s.side.map(b => build(b)) })),
   };
   if (sketch.screens.some(s => s.raw.length)) warnings.push('```dsx blocks only run once the app is made real; the sketch leaves them out');
   return { name: sketch.name, screens, warnings, html: documentFor(spec, sketch.theme) };

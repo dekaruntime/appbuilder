@@ -22,6 +22,31 @@ transition: slide | fade | scale | none
 - tabs: Swipe | Matches           (switches between screens)
 - input: Bill amount → bill       (a real field: typing updates the state value bill, and everything showing {bill} updates live)
 - space
+- tile: **Heading** · line two → actions      (a tappable card, e.g. a product in a grid)
+- subtitle via a ### line inside a screen
+
+LAYOUT: blocks nest by indentation (two spaces) under a container:
+- grid: 3                 (3 equal columns)
+- row:                    (side by side, wrapping)
+- columns:                (side by side, equal widths)
+- stack:                  (top to bottom)
+- panel:                  (a card that holds blocks)
+  - (children indented here)
+Any block can end with constraints: @width 1/3 or @width 320, @height 200, @align left|center|right, @gap tight|loose, @grow, @scroll, @sticky
+Screen layout (line under the ## heading): layout: sidebar right 340 | sidebar left 300 | centered 480 | split
+  then a "### Side" line starts the sidebar's blocks.
+
+TABLES: plain Markdown tables, with {values} and [Buttons] in cells:
+| Item | Qty | Price |
+| Classic | {classic} | \${classic * 4} |
+
+REPEAT: add "from <data>" to any block to draw it once per row, with {menu.1} as that row:
+- tile from menu: **{menu.1}** · \${menu.2} → pick, Detail
+
+COMPONENTS: declare once, use like a block:
+## component MenuItem(name, price)
+- tile: **{name}** · \${price} → order +1
+…then inside a screen: - MenuItem: Classic, 4
 
 Actions after →, separated by commas: a screen name (go there), back, likes +1, likes -1, total = bill * 2, mood = "happy", toggle open, next horses, prev horses.
 

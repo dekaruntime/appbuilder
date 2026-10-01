@@ -38,17 +38,35 @@ const THEMES: Record<string, Palette> = {
 
 const MOTION: Record<string, string> = { slide: 'enter-slide duration-300', fade: 'enter-fade duration-300', scale: 'enter-scale duration-300', none: '' };
 
-export type Block = { kind: string; body: string; line: number };
-export type Screen = { name: string; transition: string; blocks: Block[]; raw: string[] };
-export type Sketch = { name: string; theme: Palette; state: [string, string][]; data: Map<string, string[][]>; screens: Screen[]; warnings: string[] };
+// A block can hold blocks (containers nest by indentation), repeat once per
+// row of a data list (`from`), or be a Markdown table (`rows`).
+export type Block = { kind: string; body: string; line: number; children: Block[]; from?: string; rows?: string[][] };
+// A screen has a main region and, with `layout: sidebar …`, a side region.
+export type Screen = { name: string; transition: string; layout: string; blocks: Block[]; side: Block[]; raw: string[] };
+// A component: a named group of blocks with parameters, used like a block.
+export type Component = { name: string; params: string[]; blocks: Block[] };
+export type Sketch = { name: string; theme: Palette; state: [string, string][]; data: Map<string, string[][]>; screens: Screen[]; components: Map<string, Component>; warnings: string[] };
 
 const ident = (text: string) => text.trim().replace(/[^A-Za-z0-9_]/g, '_').replace(/^(\d)/, '_$1') || 'value';
 const str = (text: string) => JSON.stringify(text);
 
+const newScreen = (name: string, transition = 'slide'): Screen => ({ name, transition, layout: '', blocks: [], side: [], raw: [] });
+const indentOf = (line: string) => (line.match(/^\s*/)?.[0] ?? '').replace(/\t/g, '  ').length;
+
 export function parseSketch(markdown: string): Sketch {
-  const sketch: Sketch = { name: 'Untitled app', theme: THEMES.warm, state: [], data: new Map(), screens: [], warnings: [] };
+  const sketch: Sketch = { name: 'Untitled app', theme: THEMES.warm, state: [], data: new Map(), screens: [], components: new Map(), warnings: [] };
   let screen: Screen | null = null;
+  let region: Block[] = [];
+  // Open containers, innermost last: a block goes inside the nearest one
+  // indented less than it.
+  let stack: { indent: number; block: Block }[] = [];
   let fence: string[] | null = null;
+  const place = (block: Block, indent: number) => {
+    while (stack.length && stack[stack.length - 1].indent >= indent) stack.pop();
+    (stack.length ? stack[stack.length - 1].block.children : region).push(block);
+    stack.push({ indent, block });
+  };
+  const ensureScreen = () => { if (!screen) { screen = newScreen('Home', 'none'); sketch.screens.push(screen); region = screen.blocks; stack = []; } return screen; };
   markdown.split('\n').forEach((rawLine, index) => {
     const line = rawLine.trimEnd();
     if (fence) {
@@ -60,7 +78,20 @@ export function parseSketch(markdown: string): Sketch {
     if (!line.trim()) return;
     let m: RegExpMatchArray | null;
     if ((m = line.match(/^#\s+(.+)$/))) { sketch.name = m[1].trim(); return; }
-    if ((m = line.match(/^##\s+(.+)$/))) { screen = { name: m[1].trim(), transition: 'slide', blocks: [], raw: [] }; sketch.screens.push(screen); return; }
+    if ((m = line.match(/^##\s+component\s+(\w+)\s*(?:\(([^)]*)\))?\s*$/i))) {
+      // Its blocks are collected in a screen that isn't shown.
+      const holder = newScreen(`component:${m[1]}`);
+      sketch.components.set(m[1].toLowerCase(), { name: m[1], params: (m[2] ?? '').split(',').map(p => p.trim()).filter(Boolean), blocks: holder.blocks });
+      screen = holder; region = holder.blocks; stack = [];
+      return;
+    }
+    if ((m = line.match(/^##\s+(.+)$/))) { screen = newScreen(m[1].trim()); sketch.screens.push(screen); region = screen.blocks; stack = []; return; }
+    if ((m = line.match(/^###\s+(.+)$/))) {
+      const s = ensureScreen();
+      if (/^side(bar)?$/i.test(m[1].trim())) { region = s.side; stack = []; if (!s.layout) s.layout = 'sidebar right 320'; }
+      else { stack = []; region.push({ kind: 'subtitle', body: m[1].trim(), line: index + 1, children: [] }); }
+      return;
+    }
     if ((m = line.match(/^theme:\s*(\w+)/i))) { sketch.theme = THEMES[m[1].toLowerCase()] ?? sketch.theme; return; }
     if ((m = line.match(/^state:\s*(.+)$/i))) {
       for (const part of splitTop(m[1], ',')) {
@@ -74,17 +105,39 @@ export function parseSketch(markdown: string): Sketch {
       return;
     }
     if (screen && (m = line.match(/^transition:\s*(\w+)/i))) { screen.transition = m[1].toLowerCase(); return; }
-    if ((m = line.match(/^\s*[-*]\s+(\w+)\s*:\s*(.*)$/))) {
-      if (!screen) { screen = { name: 'Home', transition: 'none', blocks: [], raw: [] }; sketch.screens.push(screen); }
-      screen.blocks.push({ kind: m[1].toLowerCase(), body: m[2], line: index + 1 });
+    if (screen && (m = line.match(/^layout:\s*(.+)$/i))) { screen.layout = m[1].trim().toLowerCase(); return; }
+    // A Markdown table row; consecutive rows build one table.
+    if (/^\s*\|.*\|\s*$/.test(line)) {
+      ensureScreen();
+      if (/^\s*\|[\s:|-]+\|\s*$/.test(line)) return;
+      const cells = line.trim().slice(1, -1).split('|').map(c => c.trim());
+      const indent = indentOf(line);
+      const top = stack[stack.length - 1];
+      if (top && top.block.kind === 'table' && top.indent === indent) top.block.rows!.push(cells);
+      else place({ kind: 'table', body: '', line: index + 1, children: [], rows: [cells] }, indent);
       return;
     }
-    if ((m = line.match(/^\s*[-*]\s+(space)\s*$/i))) { screen?.blocks.push({ kind: 'space', body: '', line: index + 1 }); return; }
-    if (screen) { screen.blocks.push({ kind: 'text', body: line.replace(/^\s*[-*>]\s*/, ''), line: index + 1 }); return; }
+    if ((m = line.match(/^(\s*)[-*]\s+(\w+)(?:\s+from\s+(\w+))?\s*:\s*(.*)$/))) {
+      ensureScreen();
+      place({ kind: m[2].toLowerCase(), body: m[4], line: index + 1, children: [], from: m[3] }, indentOf(line));
+      return;
+    }
+    if ((m = line.match(/^(\s*)[-*]\s+(space)\s*$/i))) { ensureScreen(); place({ kind: 'space', body: '', line: index + 1, children: [] }, indentOf(line)); return; }
+    if (screen) { place({ kind: 'text', body: line.replace(/^\s*[-*>]\s*/, ''), line: index + 1, children: [] }, indentOf(line)); return; }
     sketch.warnings.push(`line ${index + 1}: not part of a screen, skipped: ${line.trim()}`);
   });
-  if (!sketch.screens.length) sketch.screens.push({ name: 'Home', transition: 'none', blocks: [{ kind: 'title', body: sketch.name, line: 1 }], raw: [] });
+  if (!sketch.screens.length) sketch.screens.push({ ...newScreen('Home', 'none'), blocks: [{ kind: 'title', body: sketch.name, line: 1, children: [] }] });
   return sketch;
+}
+
+/** Every block in reading order, containers opened up (for the DekaScript draft). */
+export function flattenBlocks(blocks: Block[]): Block[] {
+  return blocks.flatMap(b => {
+    if (b.kind === 'table') return (b.rows ?? []).map(r => ({ kind: 'text', body: r.join(' · '), line: b.line, children: [] }));
+    if (b.kind === 'tile') return [{ ...b, kind: 'card', children: [] }];
+    if (['grid', 'row', 'columns', 'stack', 'panel'].includes(b.kind)) return flattenBlocks(b.children);
+    return [{ ...b, children: [] }, ...flattenBlocks(b.children)];
+  });
 }
 
 /** Split on a separator that isn't inside [ ] or { }. */
@@ -166,6 +219,7 @@ export function compileSketch(markdown: string, skipRaw: Set<number> = new Set()
   const block = (b: Block): string => {
     switch (b.kind) {
       case 'title': return `<p className="text-2xl">${text(b.body)}</p>`;
+      case 'subtitle': return `<p className="text-lg">${text(b.body)}</p>`;
       case 'text': return `<p>${text(b.body)}</p>`;
       case 'note': return `<p className="text-sm text-[#${p.muted}]">${text(b.body)}</p>`;
       case 'space': return `<div className="h-4 shrink-0" />`;
@@ -226,7 +280,7 @@ export function compileSketch(markdown: string, skipRaw: Set<number> = new Set()
   for (const s of sketch.screens) {
     const motion = MOTION[s.transition] ?? MOTION.slide;
     const raws = s.raw.map(r => ({ code: r.trim(), index: rawIndex++ })).filter(r => !skipRaw.has(r.index)).map(r => r.code);
-    const children = [...s.blocks.map(block), ...raws].map(c => `                ${c}`).join('\n');
+    const children = [...flattenBlocks([...s.blocks, ...s.side]).map(block), ...raws].map(c => `                ${c}`).join('\n');
     lines.push(`            {screen == ${str(s.name)} ? <div className="w-full h-full p-6 gap-4 ${motion}">`);
     lines.push(children);
     lines.push('            </div> : None}');
