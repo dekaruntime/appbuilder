@@ -62,13 +62,32 @@ fn read(dir: &Path) -> ProjectFile {
     ProjectFile { path: dir.to_string_lossy().into_owned(), source: fs::read_to_string(&file).ok(), modified_ms }
 }
 
-/// Write the app's source and manifest; creates the folder on first save.
+/// The error a new app's save returns when its folder already exists; the
+/// builder then picks a fresh id rather than overwriting another app.
+pub const FOLDER_TAKEN: &str = "folder-taken";
+
+/// Write the app's source and manifest into its folder (named by the app's
+/// id). `create` makes the folder exclusively: a new app never reuses one.
 #[tauri::command]
-pub fn project_save(app: tauri::AppHandle, name: String, source: String, width: u32, height: u32, agents: String) -> Result<ProjectFile> {
-    let dir = apps_root(&app)?.join(folder_name(&name));
-    fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+#[allow(clippy::too_many_arguments)] // one field per thing the builder saves, straight from the IPC call
+pub fn project_save(app: tauri::AppHandle, folder: String, name: String, source: String, width: u32, height: u32, agents: String, create: bool) -> Result<ProjectFile> {
+    write_project(&apps_root(&app)?, &folder, &name, &source, (width, height), &agents, create)
+}
+
+fn write_project(root: &Path, folder: &str, name: &str, source: &str, (width, height): (u32, u32), agents: &str, create: bool) -> Result<ProjectFile> {
+    fs::create_dir_all(root).map_err(|e| format!("Could not create {}: {e}", root.display()))?;
+    let dir = root.join(folder_name(folder));
+    if create {
+        match fs::create_dir(&dir) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => return Err(FOLDER_TAKEN.into()),
+            Err(e) => return Err(format!("Could not create {}: {e}", dir.display())),
+        }
+    } else {
+        fs::create_dir_all(&dir).map_err(|e| format!("Could not create {}: {e}", dir.display()))?;
+    }
     fs::write(dir.join(SOURCE), source).map_err(|e| format!("Could not save {SOURCE}: {e}"))?;
-    let manifest = serde_json::to_string_pretty(&manifest(&name, width, height)).map_err(|e| e.to_string())?;
+    let manifest = serde_json::to_string_pretty(&manifest(name, width, height)).map_err(|e| e.to_string())?;
     fs::write(dir.join(MANIFEST), manifest + "\n").map_err(|e| format!("Could not save {MANIFEST}: {e}"))?;
     // What an agent working in this folder (Codex in the terminal) must know.
     fs::write(dir.join("AGENTS.md"), agents).map_err(|e| format!("Could not save AGENTS.md: {e}"))?;
@@ -92,6 +111,19 @@ mod tests {
         assert_eq!(folder_name("../../etc/passwd"), "etcpasswd");
         assert_eq!(folder_name("   "), "Untitled app");
         assert_eq!(identifier("Horse Tinder!"), "app.zega.horse-tinder");
+    }
+
+    #[test]
+    fn a_new_app_never_reuses_a_folder() {
+        let root = tempfile::tempdir().unwrap();
+        let first = write_project(root.path(), "excited-strawberry-x83k", "Horse Tinder", "a", (420, 640), "agents", true).unwrap();
+        assert_eq!(fs::read_to_string(root.path().join("excited-strawberry-x83k/app.dsx")).unwrap(), "a");
+        // A second new app with the same id is refused, and the first app is untouched.
+        assert_eq!(write_project(root.path(), "excited-strawberry-x83k", "Other", "b", (420, 640), "agents", true).err().as_deref(), Some(FOLDER_TAKEN));
+        assert_eq!(fs::read_to_string(root.path().join("excited-strawberry-x83k/app.dsx")).unwrap(), "a");
+        // Saving an existing app updates it in place.
+        write_project(root.path(), "excited-strawberry-x83k", "Horse Tinder", "c", (420, 640), "agents", false).unwrap();
+        assert_eq!(read(Path::new(&first.path)).source.as_deref(), Some("c"));
     }
 
     #[test]

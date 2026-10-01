@@ -13,6 +13,7 @@ import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
 import { compileError } from '../lib/deka/runtime';
 import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
 import { WINDOW_SIZES, readStartup } from '../lib/builder-startup';
+import { newAppId } from '../lib/app-name';
 
 type Mode = 'full' | 'rixse';
 // How a version was made: written whole, edited by rixse ops, or rixse asking
@@ -76,6 +77,9 @@ export default function Builder() {
   // The app's folder on disk (~/Documents/Zega Apps/<name>), what the builder
   // last wrote there, and the terminal that opens in it.
   const [projectPath, setProjectPath] = useState<string | null>(null);
+  // The app's id (excited-strawberry-x83k): its folder, and its name until
+  // one is typed. `created` is false until the folder exists.
+  const app = useRef<{ id: string; created: boolean }>({ id: '', created: false });
   const written = useRef<{ source: string; modified: number | null } | null>(null);
   // Chat and terminal are one side at a time: opening the terminal hides the
   // chat, closing it brings the chat back; ⌘K shows the chat and closes the
@@ -130,10 +134,24 @@ export default function Builder() {
   // The shown version is what's on disk, so the terminal edits what you see.
   useEffect(() => {
     if (!current || building || !isTauri()) return;
-    if (written.current?.source === current.source) return;
-    void invoke<{ path: string; modified_ms: number | null }>('project_save', { name: appName || 'Untitled app', source: current.source, width: size[0], height: size[1], agents: agentsFile(appName) })
-      .then(file => { written.current = { source: current.source, modified: file.modified_ms }; setProjectPath(file.path); })
-      .catch(reason => setFailure(String(reason)));
+    if (written.current?.source === current.source && app.current.created) return;
+    const save = async (): Promise<void> => {
+      if (!app.current.id) app.current = { id: newAppId(), created: false };
+      try {
+        const file = await invoke<{ path: string; modified_ms: number | null }>('project_save', {
+          folder: app.current.id, name: appName || app.current.id, source: current.source,
+          width: size[0], height: size[1], agents: agentsFile(appName || app.current.id), create: !app.current.created,
+        });
+        app.current.created = true;
+        written.current = { source: current.source, modified: file.modified_ms };
+        setProjectPath(file.path);
+      } catch (reason) {
+        if (String(reason) !== 'folder-taken') { setFailure(String(reason)); return; }
+        app.current = { id: newAppId(), created: false };
+        return save();
+      }
+    };
+    void save();
   }, [current?.n, current?.source, building, appName, size]);
 
   // Edits made in the folder (Codex in the terminal, an editor) become versions.
@@ -233,6 +251,7 @@ export default function Builder() {
     const ask = text.trim();
     if (!ask || !model || building) return;
     const base = fresh ? null : current;
+    if (!base) { app.current = { id: newAppId(), created: false }; written.current = null; setProjectPath(null); }
     const n = versions.length + 1;
     const how: Mode = base ? mode : 'full';
     setAsk(''); setFailure(null); setPreview('');
@@ -353,7 +372,7 @@ export default function Builder() {
     </nav>
     <section className="bpreview" aria-label="App">
       <div className="bapp-bar">
-        <input aria-label="App name" placeholder="App name" value={appName} onChange={event => setAppName(event.target.value)} />
+        <input aria-label="App name" placeholder={app.current.id || 'App name'} value={appName} onChange={event => setAppName(event.target.value)} />
         <select aria-label="Window size" value={size.join('x')} onChange={event => setSize(SIZES.find(s => s.join('x') === event.target.value) ?? SIZES[1])}>
           {SIZES.map(s => <option key={s.join('x')} value={s.join('x')}>{s[0]} × {s[1]}</option>)}
         </select>
@@ -364,7 +383,7 @@ export default function Builder() {
         </span>
       </div>
       <div className="bstage">
-      <DesktopStage theme={desktop} name={appName} width={size[0]} height={size[1]}>
+      <DesktopStage theme={desktop} name={appName || app.current.id} width={size[0]} height={size[1]}>
         {zoom => shownSource
           ? <DekaPreview source={shownSource} width={size[0]} height={size[1]} zoom={zoom} />
           : <p className="bpreview-empty">{building ? (building.writing ? 'Writing…' : 'Thinking…') : 'Your app runs here.'}</p>}
