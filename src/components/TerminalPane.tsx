@@ -4,6 +4,8 @@ import type { Terminal as Xterm, ITheme } from '@xterm/xterm';
 import '@xterm/xterm/css/xterm.css';
 import { connectTerminal } from '../lib/terminal';
 
+export type TerminalCommand = { line: string; then?: string; id: number };
+
 // A real shell in the app's project folder, sliding in from the right like
 // cqx desktop's terminal (cqxai/desktop src/app/Terminal.tsx). Edits made
 // here land in the folder the builder watches, so they show up in the preview.
@@ -22,7 +24,7 @@ function theme(): ITheme {
   };
 }
 
-function Terminal({ path, visible, command }: { path: string; visible: boolean; command: string | null }) {
+function Terminal({ path, visible, command, start }: { path: string; visible: boolean; command: TerminalCommand | null; start: string }) {
   const container = useRef<HTMLDivElement>(null);
   const terminal = useRef<Xterm | null>(null);
   const fit = useRef<(() => void) | null>(null);
@@ -69,7 +71,7 @@ function Terminal({ path, visible, command }: { path: string; visible: boolean; 
           // A plain shell with `codex` already typed at the prompt: Enter starts
           // it; clearing the line leaves an ordinary terminal. Waits a moment so
           // the shell has drawn its prompt (login rc files print first).
-          setTimeout(() => { if (!gone && !commandSent.current) session.write(new TextEncoder().encode('codex')); }, 600);
+          setTimeout(() => { if (!gone && !commandSent.current && start) session.write(new TextEncoder().encode(start)); }, 600);
         }).catch(e => report(String(e)));
         dispose = () => {
           observer.disconnect(); cancelAnimationFrame(frame); media.removeEventListener('change', retheme);
@@ -88,8 +90,10 @@ function Terminal({ path, visible, command }: { path: string; visible: boolean; 
   useEffect(() => {
     if (!command) return;
     commandSent.current = true;
-    const timer = setTimeout(() => send.current?.(`\x15${command}\r`), send.current ? 0 : 900);
-    return () => clearTimeout(timer);
+    const timer = setTimeout(() => send.current?.(`\x15${command.line}\r`), send.current ? 0 : 900);
+    // An agent without a starting-prompt argument gets its request typed once it is up.
+    const then = command.then ? setTimeout(() => send.current?.(`${command.then}\r`), (send.current ? 0 : 900) + 3000) : undefined;
+    return () => { clearTimeout(timer); clearTimeout(then); };
   }, [command]);
 
   return <>
@@ -99,8 +103,8 @@ function Terminal({ path, visible, command }: { path: string; visible: boolean; 
   </>;
 }
 
-export default function TerminalPane({ path, open, command, onHide }: {
-  path: string | null; open: boolean; command: string | null; onHide: () => void;
+export default function TerminalPane({ path, open, command, start, onHide }: {
+  path: string | null; open: boolean; command: TerminalCommand | null; start: string; onHide: () => void;
 }) {
   const [width, setWidth] = useState(520);
   const [generation, setGeneration] = useState(0);
@@ -122,7 +126,7 @@ export default function TerminalPane({ path, open, command, onHide }: {
         <button type="button" aria-label="Close terminal session" onClick={() => { setStarted(false); setGeneration(n => n + 1); onHide(); }}>×</button>
       </div></header>
       {!path ? <p className="terminal-message">Build an app first: the terminal opens in its folder.</p>
-        : started ? <Terminal key={`${path}-${generation}`} path={path} visible={open} command={command} /> : null}
+        : started ? <Terminal key={`${path}-${generation}`} path={path} visible={open} command={command} start={start} /> : null}
     </div>
   </aside>;
 }

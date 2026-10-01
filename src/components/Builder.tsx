@@ -5,14 +5,14 @@ import { listen } from '@tauri-apps/api/event';
 import BuilderRail from './BuilderRail';
 import DekaPreview from './DekaPreview';
 import DesktopStage, { defaultDesktop, type DesktopTheme } from './DesktopStage';
-import TerminalPane from './TerminalPane';
+import TerminalPane, { type TerminalCommand } from './TerminalPane';
 import { IDEA_EVENT, PENDING_IDEA } from './IdeaRouter';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
 import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
 import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
 import { compileError } from '../lib/deka/runtime';
 import { formatMs, formatTokens, reportTiming, useLastTiming, type Tokens } from '../lib/timing';
-import { WINDOW_SIZES, readStartup } from '../lib/builder-startup';
+import { HARNESSES, WINDOW_SIZES, readStartup, type Harness } from '../lib/builder-startup';
 import { newAppId } from '../lib/app-name';
 
 type Mode = 'full' | 'rixse';
@@ -74,6 +74,7 @@ export default function Builder() {
     setDesktop(startup.desktop === 'auto' ? defaultDesktop() : startup.desktop);
     setSize(SIZES.find(s => s.join('x') === startup.size) ?? SIZES[1]);
     setSide(startup.side);
+    setHarness(startup.harness);
   }, []);
   // The app's folder on disk (~/Documents/Zega Apps/<name>), what the builder
   // last wrote there, and the terminal that opens in it.
@@ -89,7 +90,8 @@ export default function Builder() {
   const terminalOpen = side === 'terminal';
   const setTerminalOpen = (open: boolean | ((open: boolean) => boolean)) =>
     setSide(current => (typeof open === 'function' ? open(current === 'terminal') : open) ? 'terminal' : 'chat');
-  const [terminalCommand, setTerminalCommand] = useState<string | null>(null);
+  const [terminalCommand, setTerminalCommand] = useState<TerminalCommand | null>(null);
+  const [harness, setHarness] = useState<Harness>('codex');
   const chatOpen = side === 'chat';
   // ⌘J toggles the terminal, ⌘K the chat (Ctrl on Windows and Linux). Caught
   // before the terminal sees the keys, so they work while typing in a shell.
@@ -220,9 +222,11 @@ export default function Builder() {
 
   const fixInTerminal = (error: string) => {
     const prompt = `The deka app in app.dsx fails to compile in the zega preview with: ${error}. Read AGENTS.md for the runtime's limits, then fix app.dsx.`;
-    setTerminalCommand(`codex '${prompt.replace(/'/g, "'\\''")}'`);
+    const fix = HARNESSES[harness].fix?.(prompt);
+    if (fix) setTerminalCommand({ ...fix, id: Date.now() });
     setTerminalOpen(true);
   };
+
   // While building, the preview shows the source as it streams in; a source
   // that doesn't compile yet leaves the last working app on screen.
   const shownSource = building ? preview || current?.source || '' : current?.source ?? '';
@@ -375,7 +379,7 @@ export default function Builder() {
           <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}{v.fixes ? ` · fixed ${v.fixes} compile ${v.fixes === 1 ? 'error' : 'errors'}` : ''}
         </button>
         {v.error && <div className="bmsg-error" role="alert"><pre>{v.error}</pre>
-          <button type="button" onClick={() => fixInTerminal(v.error!)}>Fix with Codex in the terminal</button></div>}
+          <button type="button" onClick={() => fixInTerminal(v.error!)}>{harness === 'shell' ? 'Open the terminal' : `Fix with ${HARNESSES[harness].label} in the terminal`}</button></div>}
       </div>)}
       {building && <div className="bmsg">
         <p className="bmsg-ask">{building.ask}</p>
@@ -434,7 +438,7 @@ export default function Builder() {
           ? <DekaPreview source={shownSource} width={size[0]} height={size[1]} zoom={zoom} />
           : <p className="bpreview-empty">{building ? (building.writing ? 'Writing…' : 'Thinking…') : 'Your app runs here.'}</p>}
       </DesktopStage>
-      <TerminalPane path={projectPath} open={terminalOpen} command={terminalCommand} onHide={() => setTerminalOpen(false)} />
+      <TerminalPane path={projectPath} open={terminalOpen} command={terminalCommand} start={HARNESSES[harness].start} onHide={() => setTerminalOpen(false)} />
       </div>
     </section>
   </div>;
