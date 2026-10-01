@@ -5,8 +5,9 @@ import { listen } from '@tauri-apps/api/event';
 import BuilderRail from './BuilderRail';
 import DekaPreview from './DekaPreview';
 import DesktopStage, { defaultDesktop, type DesktopTheme } from './DesktopStage';
+import TerminalPane from './TerminalPane';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
-import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, appRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
+import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
 import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
 import { compileError } from '../lib/deka/runtime';
 import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
@@ -14,7 +15,7 @@ import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing
 type Mode = 'full' | 'rixse';
 // How a version was made: written whole, edited by rixse ops, or rixse asking
 // for a rewrite because the change rebuilt most of the app.
-type Made = { how: 'full' } | { how: 'rixse'; ops: number; missed: number } | { how: 'escalated' };
+type Made = { how: 'full' } | { how: 'rixse'; ops: number; missed: number } | { how: 'escalated' } | { how: 'outside' };
 // fixes: compile errors the model repaired on its own; error: one it couldn't.
 type Version = { n: number; ask: string; source: string; basedOn: number | null; ms: number; tokens: Tokens | null; made: Made; fixes: number; error: string | null };
 // "thinking" until the first word of the answer arrives (reasoning models can
@@ -24,7 +25,7 @@ type Done = Extract<AskEvent, { kind: 'completed' }>;
 
 const MAX_FIXES = 2;
 
-const madeLabel = (made: Made) => made.how === 'full' ? 'rewrite'
+const madeLabel = (made: Made) => made.how === 'outside' ? 'edited in the folder' : made.how === 'full' ? 'rewrite'
   : made.how === 'escalated' ? 'rixse → rewrite'
   : `rixse · ${made.ops} ${made.ops === 1 ? 'op' : 'ops'}${made.missed ? ` (${made.missed} missed)` : ''}`;
 
@@ -64,6 +65,12 @@ export default function Builder() {
   const [size, setSize] = useState<readonly [number, number]>(SIZES[1]);
   const [appName, setAppName] = useState('');
   useEffect(() => { setDesktop(defaultDesktop()); }, []);
+  // The app's folder on disk (~/Documents/Zega Apps/<name>), what the builder
+  // last wrote there, and the terminal that opens in it.
+  const [projectPath, setProjectPath] = useState<string | null>(null);
+  const written = useRef<{ source: string; modified: number | null } | null>(null);
+  const [terminalOpen, setTerminalOpen] = useState(false);
+  const [terminalCommand, setTerminalCommand] = useState<string | null>(null);
   // One prompt-cache key per session: its requests share an opening.
   const session = useRef(`zega-builder-${crypto.randomUUID()}`);
   const lastDraw = useRef(0);
@@ -91,6 +98,42 @@ export default function Builder() {
   useEffect(() => { log.current?.scrollTo({ top: log.current.scrollHeight }); }, [versions.length, building?.ask, building?.mode]);
 
   const current = versions.find(v => v.n === shown) ?? null;
+
+  // The shown version is what's on disk, so the terminal edits what you see.
+  useEffect(() => {
+    if (!current || building || !isTauri()) return;
+    if (written.current?.source === current.source) return;
+    void invoke<{ path: string; modified_ms: number | null }>('project_save', { name: appName || 'Untitled app', source: current.source, width: size[0], height: size[1], agents: agentsFile(appName) })
+      .then(file => { written.current = { source: current.source, modified: file.modified_ms }; setProjectPath(file.path); })
+      .catch(reason => setFailure(String(reason)));
+  }, [current?.n, current?.source, building, appName, size]);
+
+  // Edits made in the folder (Codex in the terminal, an editor) become versions.
+  const versionsRef = useRef(versions);
+  versionsRef.current = versions;
+  useEffect(() => {
+    if (!projectPath || building) return;
+    const timer = setInterval(() => {
+      void invoke<{ source: string | null; modified_ms: number | null }>('project_read', { path: projectPath }).then(async file => {
+        const known = written.current;
+        if (!file.source || !known || file.source === known.source || file.modified_ms === known.modified) return;
+        written.current = { source: file.source, modified: file.modified_ms };
+        const source = file.source;
+        const error = await compileError(source);
+        const list = versionsRef.current;
+        const n = list.length + 1;
+        setVersions([...list, { n, ask: 'Edited in the app folder', source, basedOn: list.find(v => v.n === shown)?.n ?? null, ms: 0, tokens: null, made: { how: 'outside' }, fixes: 0, error }]);
+        setShown(n);
+      }).catch(() => {});
+    }, 800);
+    return () => clearInterval(timer);
+  }, [projectPath, building, shown]);
+
+  const fixInTerminal = (error: string) => {
+    const prompt = `The deka app in app.dsx fails to compile in the zega preview with: ${error}. Read AGENTS.md for the runtime's limits, then fix app.dsx.`;
+    setTerminalCommand(`codex '${prompt.replace(/'/g, "'\\''")}'`);
+    setTerminalOpen(true);
+  };
   // While building, the preview shows the source as it streams in; a source
   // that doesn't compile yet leaves the last working app on screen.
   const shownSource = building ? preview || current?.source || '' : current?.source ?? '';
@@ -213,7 +256,8 @@ export default function Builder() {
         <button type="button" className="bmsg-done" aria-pressed={shown === v.n} onClick={() => setShown(v.n)}>
           <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}{v.fixes ? ` · fixed ${v.fixes} compile ${v.fixes === 1 ? 'error' : 'errors'}` : ''}
         </button>
-        {v.error && <pre className="bmsg-error" role="alert">{v.error}</pre>}
+        {v.error && <div className="bmsg-error" role="alert"><pre>{v.error}</pre>
+          <button type="button" onClick={() => fixInTerminal(v.error!)}>Fix with Codex in the terminal</button></div>}
       </div>)}
       {building && <div className="bmsg">
         <p className="bmsg-ask">{building.ask}</p>
@@ -251,15 +295,19 @@ export default function Builder() {
         <select aria-label="Window size" value={size.join('x')} onChange={event => setSize(SIZES.find(s => s.join('x') === event.target.value) ?? SIZES[1])}>
           {SIZES.map(s => <option key={s.join('x')} value={s.join('x')}>{s[0]} × {s[1]}</option>)}
         </select>
+        <button type="button" className="bapp-term" aria-pressed={terminalOpen} onClick={() => { setTerminalCommand(null); setTerminalOpen(open => !open); }}>Terminal</button>
         <span className="bmode" role="group" aria-label="Desktop">
           {DESKTOPS.map(d => <button key={d.id} type="button" aria-pressed={desktop === d.id} onClick={() => setDesktop(d.id)}>{d.label}</button>)}
         </span>
       </div>
+      <div className="bstage">
       <DesktopStage theme={desktop} name={appName} width={size[0]} height={size[1]}>
         {zoom => shownSource
           ? <DekaPreview source={shownSource} width={size[0]} height={size[1]} zoom={zoom} />
           : <p className="bpreview-empty">{building ? (building.writing ? 'Writing…' : 'Thinking…') : 'Your app runs here.'}</p>}
       </DesktopStage>
+      <TerminalPane path={projectPath} open={terminalOpen} command={terminalCommand} onHide={() => setTerminalOpen(false)} />
+      </div>
     </section>
   </div>;
 }

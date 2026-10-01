@@ -12,8 +12,10 @@ mod index_bridge;
 mod local;
 mod loopback;
 mod menu;
+mod project;
 #[cfg(target_os = "macos")]
 mod shortcut;
+mod term;
 #[cfg(target_os = "macos")]
 mod thumbnail;
 mod shortcut_config;
@@ -72,6 +74,12 @@ pub fn run() {
             chatgpt::chatgpt_disconnect,
             chatgpt::chatgpt_models,
             chatgpt::chatgpt_ask,
+            project::project_save,
+            project::project_read,
+            term::term_open,
+            term::term_write,
+            term::term_resize,
+            term::term_close,
             chatgpt::chatgpt_usage,
             earth::earth_search,
             earth::earth_open,
@@ -113,6 +121,7 @@ pub fn run() {
             app.manage(Arc::new(state));
             let chatgpt = ChatGptState::new(app.handle().clone()).map_err(|error| error.to_string())?;
             app.manage(Arc::new(chatgpt));
+            app.manage(term::TermState::default());
             app.manage(Arc::new(earth::EarthState::new().map_err(|error| error.to_string())?));
             #[cfg(target_os = "linux")]
             if let Err(error) = desktop_identity::prepare(app.handle()) {
@@ -135,6 +144,7 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(|window, event| {
+            term::window_closed(window, event);
             if window.label() == "main" {
                 if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                     api.prevent_close();
