@@ -7,9 +7,9 @@
 //   never eval or Function;
 // - the document's CSP allows no network at all, and the iframe has no
 //   same-origin access, so a sketch can't reach the app, its IPC or files.
-import { parseSketch, splitTop, type Block, type Palette } from './compile';
+import { parseSketch, splitTop, type Block } from './compile';
 
-export type SketchHtml = { name: string; html: string; screens: string[]; warnings: string[] };
+export type SketchHtml = { name: string; html: string; spec: Record<string, unknown>; screens: string[]; warnings: string[] };
 
 type Action = { go: string } | { back: true } | { add: string; by: number } | { set: string; expr: string } | { toggle: string } | { step: string; by: 1 | -1 } | { pick: string };
 type Btn = { label: string; primary: boolean; actions: Action[] };
@@ -144,14 +144,15 @@ export function compileSketchHtml(markdown: string): SketchHtml {
     screens: sketch.screens.map(s => ({ name: s.name, transition: s.transition, layout: s.layout, nodes: s.blocks.map(b => build(b)), side: s.side.map(b => build(b)) })),
   };
   if (sketch.screens.some(s => s.raw.length)) warnings.push('```dsx blocks only run once the app is made real; the sketch leaves them out');
-  return { name: sketch.name, screens, warnings, html: documentFor(spec, sketch.theme) };
+  const p = sketch.theme;
+  const withTheme = { ...spec, theme: { bg: p.bg, ink: p.ink, card: p.card, soft: p.soft, muted: p.muted, accent: p.accent, 'accent-ink': p.accentInk } };
+  return { name: sketch.name, screens, warnings, spec: withTheme, html: documentFor(withTheme) };
 }
 
 // JSON inside a <script> element: "<" can't close it once escaped.
 const embed = (value: unknown) => JSON.stringify(value).replace(/</g, '\\u003c');
 
-function documentFor(spec: Record<string, unknown>, p: Palette): string {
-  const theme = { bg: p.bg, ink: p.ink, card: p.card, soft: p.soft, muted: p.muted, accent: p.accent, 'accent-ink': p.accentInk };
+function documentFor(spec: Record<string, unknown>): string {
   // No inline code or styles: the runtime and stylesheet are files shipped
   // with the app (allowed by the app's own CSP, which this srcdoc document
   // inherits), and the spec is a non-executable JSON block. The meta policy
@@ -160,6 +161,6 @@ function documentFor(spec: Record<string, unknown>, p: Palette): string {
 <meta http-equiv="Content-Security-Policy" content="connect-src 'none'; img-src 'none'; media-src 'none'; frame-src 'none'; form-action 'none'">
 <link rel="stylesheet" href="/sketch/frame.css">
 </head><body><div id="app"></div>
-<script type="application/json" id="spec">${embed({ ...spec, theme })}</script>
+<script type="application/json" id="spec">${embed(spec)}</script>
 <script src="/sketch/runtime.js"></script></body></html>`;
 }

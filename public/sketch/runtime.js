@@ -2,11 +2,12 @@
 // code shipped with the app; only the JSON spec it reads varies. Builds the
 // DOM with textContent only and evaluates {…} with its own parser, never eval.
 (() => {
-const spec = JSON.parse(document.getElementById('spec').textContent);
+let spec = JSON.parse(document.getElementById('spec').textContent);
 // Theme colours from the spec, set through the CSSOM (no inline styles needed).
-for (const [k, v] of Object.entries(spec.theme || {})) document.documentElement.style.setProperty('--' + k, '#' + v);
-const state = Object.assign({}, spec.state);
-const cursor = {}; for (const k in spec.data) cursor[k] = 0;
+const applyTheme = () => { for (const [k, v] of Object.entries(spec.theme || {})) document.documentElement.style.setProperty('--' + k, '#' + v); };
+applyTheme();
+let state = Object.assign({}, spec.state);
+let cursor = {}; for (const k in spec.data) cursor[k] = 0;
 let screen = spec.screens[0] ? spec.screens[0].name : '';
 let back = screen;
 const report = (kind, detail) => { try { parent.postMessage({ zegaSketch: kind, detail: String(detail) }, '*'); } catch (_) {} };
@@ -151,6 +152,20 @@ function render() {
 }
 // Typing re-renders the screen; render() puts focus and the caret back.
 function update() { render(); }
+// A newer version of the sketch, sent by the builder while it streams in:
+// swap it in place (no reload, no entrance animation), keeping what the
+// person has typed or counted for values that still exist.
+window.addEventListener('message', event => {
+  if (event.source !== parent || !event.data || !event.data.zegaSpec) return;
+  const next = event.data.zegaSpec;
+  const kept = {}; for (const k in next.state) kept[k] = k in state ? state[k] : next.state[k];
+  const keptCursor = {}; for (const k in next.data) keptCursor[k] = Math.min(cursor[k] || 0, Math.max(0, next.data[k].length - 1));
+  spec = next; state = kept; cursor = keptCursor;
+  if (!spec.screens.some(x => x.name === screen)) { screen = spec.screens[0] ? spec.screens[0].name : ''; }
+  else shown = screen;
+  applyTheme();
+  try { render(); report('ready', screen); } catch (e) { report('error', e.message); }
+});
 window.addEventListener('error', e => report('error', e.message));
 try { render(); report('ready', screen); } catch (e) { report('error', e.message); }
 })();

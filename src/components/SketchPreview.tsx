@@ -14,26 +14,36 @@ export default function SketchPreview({ sketch, width, height, zoom, reload = 0,
   // The sketch's runtime says "ready" once it has drawn. If it never does
   // (blocked or broken), say so instead of leaving a blank window.
   const [started, setStarted] = useState(false);
+  const startedRef = useRef(false);
   const [stalled, setStalled] = useState(false);
   useEffect(() => {
-    setStarted(false); setStalled(false);
+    setStarted(false); startedRef.current = false; setStalled(false);
     const timer = setTimeout(() => setStalled(true), 2500);
     return () => clearTimeout(timer);
-  }, [sketch, reload]);
+  }, [html]);
   const frame = useRef<HTMLIFrameElement>(null);
   const report = useRef(onStatus);
   report.current = onStatus;
 
+  // The frame's document is set once (and again on refresh); later versions
+  // are posted into the running page, so streaming updates don't reload it.
+  const loaded = useRef(-1);
   useEffect(() => {
     let live = true;
-    compileInWorker(sketch).then(result => { if (live) { setHtml(result.html); setFailure(null); } }).catch(error => { if (live) setFailure(String(error instanceof Error ? error.message : error)); });
+    compileInWorker(sketch).then(result => {
+      if (!live) return;
+      setFailure(null);
+      const win = frame.current?.contentWindow;
+      if (loaded.current === reload && startedRef.current && win) win.postMessage({ zegaSpec: result.spec }, '*');
+      else { loaded.current = reload; setHtml(result.html); }
+    }).catch(error => { if (live) setFailure(String(error instanceof Error ? error.message : error)); });
     return () => { live = false; };
   }, [sketch, reload]);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {
       if (event.source !== frame.current?.contentWindow || !event.data?.zegaSketch) return;
-      if (event.data.zegaSketch === 'ready') setStarted(true);
+      if (event.data.zegaSketch === 'ready') { setStarted(true); startedRef.current = true; }
       report.current?.(event.data.zegaSketch === 'error' ? { kind: 'runtime', error: event.data.detail } : { kind: 'ok' });
     };
     addEventListener('message', onMessage);
