@@ -68,6 +68,9 @@ A deka desktop app built with zega. The whole app is \`app.dsx\` (DekaScript); \
 The zega app builder watches this folder: every save to app.dsx shows up in its live preview.
 
 - Keep the app in app.dsx with \`export fn App()\` as its entry.
+- Check every change compiles before you say it's done:
+  \`"$(command -v deka || echo /Volumes/Projects/claude/deka-runtime-0.60.1/bin/deka)" check deka.json\`
+  (deka 0.60.1's native CLI; it reports the same errors the preview shows). Don't translate the app to JavaScript to test it: the VM's rules differ.
 - The preview runs deka 0.60.1's VM, which supports a subset of DekaScript. Stay inside these limits:
 ${HARD_LIMITS}`;
 }

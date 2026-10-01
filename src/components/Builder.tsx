@@ -3,7 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Channel, invoke, isTauri } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import BuilderRail from './BuilderRail';
-import DekaPreview from './DekaPreview';
+import DekaPreview, { type PreviewStatus } from './DekaPreview';
 import DesktopStage, { defaultDesktop, type DesktopTheme } from './DesktopStage';
 import TerminalPane, { type TerminalCommand } from './TerminalPane';
 import { IDEA_EVENT, PENDING_IDEA } from './IdeaRouter';
@@ -11,6 +11,7 @@ import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/c
 import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
 import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
 import { compileError } from '../lib/deka/runtime';
+import { problemsLabel, runtimeLabel } from '../lib/deka/plain';
 import { formatMs, formatTokens, reportTiming, useLastTiming, type Tokens } from '../lib/timing';
 import { HARNESSES, WINDOW_SIZES, readStartup, type Harness } from '../lib/builder-startup';
 import { newAppId } from '../lib/app-name';
@@ -67,6 +68,7 @@ export default function Builder() {
   const lastTiming = useLastTiming();
   const [desktop, setDesktop] = useState<DesktopTheme>('macos');
   const [size, setSize] = useState<readonly [number, number]>(SIZES[1]);
+  const custom = !SIZES.some(s => s[0] === size[0] && s[1] === size[1]);
   const [appName, setAppName] = useState('');
   // Startup choices from Settings: side panel, desktop and window size.
   useEffect(() => {
@@ -214,6 +216,33 @@ export default function Builder() {
   // The real native window (`deka dev`, run by the app in the background), with
   // fast refresh: every version the builder saves shows up there too.
   const [running, setRunning] = useState(false);
+  // What the preview reports for the app on screen, and a counter that
+  // recompiles and restarts it.
+  const [previewStatus, setPreviewStatus] = useState<PreviewStatus>({ kind: 'ok' });
+  const [reload, setReload] = useState(0);
+  // Refresh: pick up the folder's app.dsx right now (an agent's fix in the
+  // terminal), then recompile and restart whatever is shown.
+  const refreshApp = async () => {
+    if (projectPath && isTauri()) {
+      try {
+        const file = await invoke<{ source: string | null; modified_ms: number | null }>('project_read', { path: projectPath });
+        const known = written.current;
+        if (file.source && known && file.source !== known.source) {
+          written.current = { source: file.source, modified: file.modified_ms };
+          const source = file.source;
+          const error = await compileError(source);
+          const list = versionsRef.current;
+          const n = list.length + 1;
+          setVersions([...list, { n, ask: 'Edited in the app folder', source, basedOn: shown, ms: 0, tokens: null, made: { how: 'outside' }, fixes: 0, error }]);
+          setShown(n);
+        }
+      } catch (reason) { setFailure(String(reason)); }
+    }
+    setReload(r => r + 1);
+  };
+  const statusText = previewStatus.kind === 'compile' ? `${problemsLabel(previewStatus.error)} · Can't open yet`
+    : previewStatus.kind === 'runtime' ? 'Stopped working' : null;
+  // Not on the bar for now: Sami has another place in mind for it.
   const runOnDesktop = () => {
     if (!projectPath) return;
     void invoke('project_run', { path: projectPath }).then(() => { setRunning(true); setFailure(null); }).catch(reason => setFailure(String(reason)));
@@ -357,6 +386,31 @@ export default function Builder() {
     void buildRef.current(idea, true);
   }, [pendingIdea, model, building]);
 
+  // "Fix it for me": the same rixse repair the automatic fixes use, run on
+  // the version on screen, landing as a new version.
+  const repair = async (error: string) => {
+    const base = current;
+    if (!base || !model || building) return;
+    const n = versions.length + 1;
+    setFailure(null);
+    setBuilding({ ask: 'Fix the problems', basedOn: base.n, mode: 'fix', ops: 0, started: performance.now(), writing: false });
+    try {
+      let source = base.source, ms = 0, fixes = 0;
+      let tokens: Tokens | null = null;
+      let left: string | null = error;
+      while (left && fixes < MAX_FIXES + 1) {
+        const fixed = await rixsePass(fixRequest(left, source), source);
+        if (!fixed) break;
+        source = fixed.source; ms += fixed.done.elapsed_ms; tokens = addTokens(tokens, fixed.done.tokens); fixes += 1;
+        left = await compileError(source);
+      }
+      setVersions(list => [...list, { n, ask: 'Fix the problems', basedOn: base.n, source, ms, tokens, made: { how: 'rixse', ops: fixes, missed: 0 }, fixes, error: left }]);
+      setShown(n);
+    } finally {
+      setBuilding(null);
+    }
+  };
+
   const status = (b: Building) => b.mode === 'fix' ? `Fixing a compile error in v${versions.length + 1} · ${elapsed(b.started)}${b.writing ? ` · ${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : ''}…`
     : `${b.mode === 'rixse' ? 'Editing' : 'Building'} v${versions.length + 1}${b.basedOn ? ` from v${b.basedOn}` : ''} · ${elapsed(b.started)} · ${b.writing ? (b.mode === 'rixse' ? `${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : 'writing') : 'thinking'}…`;
 
@@ -376,10 +430,16 @@ export default function Builder() {
       {versions.map(v => <div key={v.n} className="bmsg">
         <p className="bmsg-ask">{v.ask}</p>
         <button type="button" className="bmsg-done" aria-pressed={shown === v.n} onClick={() => setShown(v.n)}>
-          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}{v.fixes ? ` · fixed ${v.fixes} compile ${v.fixes === 1 ? 'error' : 'errors'}` : ''}
+          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}{v.fixes ? ` · fixed ${v.fixes} ${v.fixes === 1 ? 'problem' : 'problems'}` : ''}
         </button>
-        {v.error && <div className="bmsg-error" role="alert"><pre>{v.error}</pre>
-          <button type="button" onClick={() => fixInTerminal(v.error!)}>{harness === 'shell' ? 'Open the terminal' : `Fix with ${HARNESSES[harness].label} in the terminal`}</button></div>}
+        {v.error && <div className="bmsg-error" role="alert">
+          <p>This version has {problemsLabel(v.error)} that couldn't be fixed automatically, so it can't open yet.</p>
+          <div className="bmsg-error-actions">
+            <button type="button" className="primary" disabled={!!building || shown !== v.n} onClick={() => void repair(v.error!)}>Fix it for me</button>
+            {harness !== 'shell' && <button type="button" onClick={() => fixInTerminal(v.error!)}>Fix with {HARNESSES[harness].label}</button>}
+          </div>
+          <details><summary>Show details</summary><pre>{v.error}</pre></details>
+        </div>}
       </div>)}
       {building && <div className="bmsg">
         <p className="bmsg-ask">{building.ask}</p>
@@ -424,18 +484,27 @@ export default function Builder() {
       <div className="bapp-bar">
         <input aria-label="App name" placeholder={app.current.id || 'App name'} value={appName} onChange={event => setAppName(event.target.value)} />
         <select aria-label="Window size" value={size.join('x')} onChange={event => setSize(SIZES.find(s => s.join('x') === event.target.value) ?? SIZES[1])}>
+          {custom && <option value={size.join('x')}>Custom · {size[0]} × {size[1]}</option>}
           {SIZES.map(s => <option key={s.join('x')} value={s.join('x')}>{s[0]} × {s[1]}</option>)}
         </select>
-        <button type="button" className="bapp-run" disabled={!projectPath} onClick={runOnDesktop} title="Open the app in a real window; it follows every edit">{running ? 'Restart on desktop' : 'Run on desktop'}</button>
-        <button type="button" className="bapp-term" aria-pressed={terminalOpen} onClick={() => { setTerminalCommand(null); setTerminalOpen(open => !open); }} title="Toggle terminal (⌘J)">Terminal <kbd>⌘J</kbd></button>
         <span className="bmode" role="group" aria-label="Desktop">
           {DESKTOPS.map(d => <button key={d.id} type="button" aria-pressed={desktop === d.id} onClick={() => setDesktop(d.id)}>{d.label}</button>)}
         </span>
       </div>
       <div className="bstage">
-      <DesktopStage theme={desktop} name={appName || app.current.id} width={size[0]} height={size[1]}>
+      <DesktopStage theme={desktop} name={appName || app.current.id} width={size[0]} height={size[1]} onResize={(w, h) => setSize([w, h])} footer={shownSource ? <>
+        {statusText && previewStatus.kind !== 'ok' && <button type="button" className="win-status" title={previewStatus.kind === 'runtime' ? runtimeLabel(previewStatus.error) : 'Click to fix it'} onClick={() => void repair(previewStatus.error)}>{statusText}</button>}
+        <button type="button" className="win-refresh" aria-label="Refresh the app" title="Reload app.dsx from the folder and restart the app" onClick={() => void refreshApp()}>
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="M21 12a9 9 0 1 1-2.6-6.4" /><path d="M21 4v5h-5" /></svg>
+        </button>
+      </> : null}>
         {zoom => shownSource
-          ? <DekaPreview source={shownSource} width={size[0]} height={size[1]} zoom={zoom} />
+          ? <DekaPreview source={shownSource} width={size[0]} height={size[1]} zoom={zoom} reload={reload} onStatus={setPreviewStatus}
+              notOpened={<div className="not-opened">
+                <b>Almost there</b>
+                <p>This version has a few mistakes, so it can't open yet. They're usually quick to fix.</p>
+                <button type="button" disabled={!!building} onClick={() => previewStatus.kind === 'compile' && void repair(previewStatus.error)}>{building ? 'Fixing…' : 'Fix it for me'}</button>
+              </div>} />
           : <p className="bpreview-empty">{building ? (building.writing ? 'Writing…' : 'Thinking…') : 'Your app runs here.'}</p>}
       </DesktopStage>
       <TerminalPane path={projectPath} open={terminalOpen} command={terminalCommand} start={HARNESSES[harness].start} onHide={() => setTerminalOpen(false)} />

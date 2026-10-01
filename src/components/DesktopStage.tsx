@@ -78,10 +78,18 @@ function Clock() {
 
 const DOCK = ['#5ac8fa', '#34c759', '#ff9f0a', '#ff375f', '#bf5af2'];
 
-export default function DesktopStage({ theme, name, width, height, children }: {
+export default function DesktopStage({ theme, name, width, height, children, footer, onResize }: {
   theme: DesktopTheme; name: string; width: number; height: number;
   children: (zoom: number) => ReactNode;
+  /** A slim bar right under the window (status and refresh). */
+  footer?: ReactNode;
+  /** Dragging the window's right edge, bottom edge or corner resizes the app. */
+  onResize?: (width: number, height: number) => void;
 }) {
+  // While dragging, the scale stays what it was when the drag began, so the
+  // window follows the pointer instead of rescaling under it.
+  const drag = useRef<{ x: number; y: number; w: number; h: number; zoom: number; edge: 'x' | 'y' | 'xy' } | null>(null);
+  const [dragZoom, setDragZoom] = useState<number | null>(null);
   const ref = useRef<HTMLDivElement>(null);
   const [area, setArea] = useState({ w: 0, h: 0 });
   useEffect(() => {
@@ -91,20 +99,45 @@ export default function DesktopStage({ theme, name, width, height, children }: {
   }, []);
   const chrome = CHROME[theme];
   const margin = 28;
-  const zoom = area.w ? Math.min(1, (area.w - margin * 2) / width, (area.h - chrome.top - chrome.bottom - chrome.title - margin * 2) / height) : 0;
+  const FOOTER = 30;
+  const fit = area.w ? Math.min(1, (area.w - margin * 2) / width, (area.h - chrome.top - chrome.bottom - chrome.title - FOOTER - margin * 2) / height) : 0;
+  const zoom = dragZoom ?? fit;
+  const startResize = (edge: 'x' | 'y' | 'xy') => (event: React.PointerEvent) => {
+    if (!onResize || event.button !== 0) return;
+    event.preventDefault();
+    event.currentTarget.setPointerCapture(event.pointerId);
+    drag.current = { x: event.clientX, y: event.clientY, w: width, h: height, zoom, edge };
+    setDragZoom(zoom);
+  };
+  const moveResize = (event: React.PointerEvent) => {
+    const d = drag.current;
+    if (!d || !onResize) return;
+    // The window is centred, so an edge moves half as far as its size changes.
+    const w = d.edge === 'y' ? d.w : Math.round(Math.min(2560, Math.max(320, d.w + 2 * (event.clientX - d.x) / d.zoom)));
+    const h = d.edge === 'x' ? d.h : Math.round(Math.min(1600, Math.max(240, d.h + 2 * (event.clientY - d.y) / d.zoom)));
+    onResize(w, h);
+  };
+  const endResize = () => { drag.current = null; setDragZoom(null); };
+  const handle = (edge: 'x' | 'y' | 'xy', label: string) => onResize
+    ? <div className={`win-resize win-resize-${edge}`} role="separator" aria-label={label} onPointerDown={startResize(edge)} onPointerMove={moveResize} onPointerUp={endResize} onLostPointerCapture={endResize} />
+    : null;
   const title = name || 'Untitled app';
 
   return <div ref={ref} className="desk" data-desktop={theme}>
     <LowPoly theme={theme} />
     {theme === 'macos' && <div className="desk-menubar"><b>{title}</b><span>File</span><span>Edit</span><span>View</span><span>Window</span><span>Help</span><span className="desk-sp" /><Clock /></div>}
     {theme === 'omarchy' && <div className="desk-waybar"><span className="ws on">1</span><span className="ws">2</span><span className="ws">3</span><span className="desk-sp" /><span>{title}</span><span className="desk-sp" /><Clock /></div>}
-    {zoom > 0 && <div className="desk-window" style={{ width: width * zoom, top: `calc(50% + ${(chrome.top - chrome.bottom) / 2}px)` }}>
-      {theme === 'macos' && <div className="win-title mac"><span className="lights"><i /><i /><i /></span><span className="win-name">{title}</span></div>}
-      {theme === 'windows' && <div className="win-title win"><span className="win-name">{title}</span><span className="win-btns"><i>―</i><i>▢</i><i className="close">✕</i></span></div>}
-      <div className="win-body" style={{ width: width * zoom, height: height * zoom }}>{children(zoom)}</div>
+    {zoom > 0 && <div className="desk-window" style={{ width: width * zoom, top: `calc(50% + ${(chrome.top - chrome.bottom - FOOTER) / 2}px)` }}>
+      <div className="win-frame">
+        {theme === 'macos' && <div className="win-title mac"><span className="lights"><i /><i /><i /></span><span className="win-name">{title}</span></div>}
+        {theme === 'windows' && <div className="win-title win"><span className="win-name">{title}</span><span className="win-btns"><i>―</i><i>▢</i><i className="close">✕</i></span></div>}
+        <div className="win-body" style={{ width: width * zoom, height: height * zoom }}>{children(zoom)}</div>
+        {handle('x', 'Resize width')}{handle('y', 'Resize height')}{handle('xy', 'Resize window')}
+      </div>
+      {footer && <div className="win-footer">{footer}</div>}
     </div>}
     {theme === 'macos' && <div className="desk-dock">{DOCK.map((c, i) => <i key={c} style={{ background: `linear-gradient(160deg, ${c}, ${mix(c, '#000000', 0.35)})` }} className={i === 0 ? 'running' : undefined} />)}</div>}
     {theme === 'windows' && <div className="desk-taskbar"><span className="tb-icons">{DOCK.map((c, i) => <i key={c} style={{ background: c }} className={i === 0 ? 'running' : undefined} />)}</span><span className="tb-clock"><Clock /></span></div>}
-    <p className="desk-size">{width} × {height}{zoom < 1 && zoom > 0 ? ` · shown at ${Math.round(zoom * 100)}%` : ''}</p>
+    <p className="desk-size">{width} × {height}{zoom < 1 && zoom > 0 ? ` · shown at ${Math.round(zoom * 100)}%` : ''}{onResize ? ' · drag an edge to resize' : ''}</p>
   </div>;
 }

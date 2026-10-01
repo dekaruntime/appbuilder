@@ -2,23 +2,36 @@
 import { useEffect, useRef, useState } from 'react';
 import { loadRuntime, NativePreview } from '../lib/deka/runtime';
 import { WebGLRenderer, type NativeScene } from '../lib/deka/webgl';
+import { runtimeLabel } from '../lib/deka/plain';
+import type { ReactNode } from 'react';
 
 // The live app: DekaScript compiles, runs and lays out in deka's WASM VM, and
 // webgl.ts draws the scene (from deka's tour, dekaruntime/website). A source
 // that fails to compile leaves the last working app running.
-export default function DekaPreview({ source, width, height, zoom, onCompiled }: {
+export type PreviewStatus = { kind: 'ok' } | { kind: 'compile'; error: string } | { kind: 'runtime'; error: string };
+
+export default function DekaPreview({ source, width, height, zoom, reload = 0, onStatus, notOpened }: {
   source: string;
   /** The app window's logical size, and how much it is scaled down to fit. */
   width: number; height: number; zoom: number;
-  onCompiled?: (result: { ok: true; ms: number } | { ok: false; error: string }) => void;
+  /** Bump to recompile and restart the app with the same source. */
+  reload?: number;
+  /** Whether the source compiled, and any error while it runs. */
+  onStatus?: (status: PreviewStatus) => void;
+  /** Shown in the window when no version has opened yet (instead of black). */
+  notOpened?: ReactNode;
 }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const runtimeRef = useRef<NativePreview | null>(null);
   const drawRef = useRef<(() => void) | null>(null);
   const [ready, setReady] = useState(false);
   const [failure, setFailure] = useState<string | null>(null);
-  const report = useRef(onCompiled);
-  report.current = onCompiled;
+  // Whether any source has compiled yet: until one does, there's no last
+  // working app to keep showing, so say why the window is empty.
+  const [compiled, setCompiled] = useState(false);
+  const [compileError, setCompileError] = useState<string | null>(null);
+  const report = useRef(onStatus);
+  report.current = onStatus;
   const size = useRef({ width, height, zoom });
   size.current = { width, height, zoom };
 
@@ -40,7 +53,7 @@ export default function DekaPreview({ source, width, height, zoom, onCompiled }:
         const scene: NativeScene = JSON.parse(runtime.frame_at(width, height, scale, performance.now(), motion.matches));
         renderer.draw(scene, scale);
         if (scene.animating) frame = requestAnimationFrame(draw);
-      } catch (cause) { setFailure(String(cause)); }
+      } catch (cause) { setFailure(String(cause)); report.current?.({ kind: 'runtime', error: String(cause instanceof Error ? cause.message : cause) }); }
     };
     void loadRuntime().then(() => {
       if (disposed) return;
@@ -58,20 +71,21 @@ export default function DekaPreview({ source, width, height, zoom, onCompiled }:
 
   useEffect(() => {
     if (!ready || !source.trim()) return;
-    const started = performance.now();
     try {
       runtimeRef.current!.compile(source, true);
-      setFailure(null);
+      setFailure(null); setCompiled(true); setCompileError(null);
+      report.current?.({ kind: 'ok' });
       drawRef.current?.();
-      report.current?.({ ok: true, ms: performance.now() - started });
     } catch (cause) {
-      report.current?.({ ok: false, error: String(cause instanceof Error ? cause.message : cause) });
+      const error = String(cause instanceof Error ? cause.message : cause);
+      setCompileError(error);
+      report.current?.({ kind: 'compile', error });
     }
-  }, [source, ready]);
+  }, [source, ready, reload]);
   useEffect(() => { drawRef.current?.(); }, [width, height, zoom]);
 
   const act = (run: () => void) => {
-    try { run(); drawRef.current?.(); } catch (cause) { setFailure(String(cause)); }
+    try { run(); drawRef.current?.(); } catch (cause) { setFailure(String(cause)); report.current?.({ kind: 'runtime', error: String(cause instanceof Error ? cause.message : cause) }); }
   };
   return <div className="deka-preview">
     <canvas ref={canvasRef} tabIndex={0} style={{ width: width * zoom, height: height * zoom }} aria-label="The app. Tab selects a control; Enter or Space activates it."
@@ -83,6 +97,8 @@ export default function DekaPreview({ source, width, height, zoom, onCompiled }:
       }}
       onKeyDown={event => act(() => { if (runtimeRef.current?.key(event.key, event.shiftKey)) event.preventDefault(); })}
       onBlur={() => act(() => runtimeRef.current?.blur())} />
-    {(!ready || failure) && <p className="deka-preview-status" role="status">{failure ?? 'Loading the deka runtime…'}</p>}
+    {!ready && !failure && <p className="deka-preview-status" role="status">Getting your app ready…</p>}
+    {failure && <p className="deka-preview-status" role="status">{runtimeLabel(failure)}</p>}
+    {ready && !failure && !compiled && compileError && <div className="deka-preview-status deka-not-opened">{notOpened}</div>}
   </div>;
 }

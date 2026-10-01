@@ -389,10 +389,11 @@ p.bmsg-done { cursor: default; }
 .desk-waybar { position: absolute; inset: 6px 8px auto; height: 24px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border-radius: 6px; background: rgba(17, 18, 26, .85); color: #c8c9d6; font: 12px "IBM Plex Mono", ui-monospace, monospace; z-index: 2; }
 .desk-waybar .ws { width: 18px; height: 18px; display: grid; place-items: center; border-radius: 4px; }
 .desk-waybar .ws.on { background: #7aa2f7; color: #11121a; }
-.desk-window { position: absolute; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; overflow: hidden; z-index: 1; }
-.desk[data-desktop="macos"] .desk-window { border-radius: 10px; box-shadow: 0 0 0 .5px rgba(0,0,0,.45), 0 22px 60px rgba(0,0,0,.45); }
-.desk[data-desktop="windows"] .desk-window { border-radius: 8px; box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 18px 48px rgba(0,0,0,.45); }
-.desk[data-desktop="omarchy"] .desk-window { border-radius: 8px; border: 2px solid #7aa2f7; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
+.desk-window { position: absolute; left: 50%; transform: translate(-50%, -50%); display: flex; flex-direction: column; z-index: 1; }
+.win-frame { display: flex; flex-direction: column; overflow: hidden; }
+.desk[data-desktop="macos"] .win-frame { border-radius: 10px; box-shadow: 0 0 0 .5px rgba(0,0,0,.45), 0 22px 60px rgba(0,0,0,.45); }
+.desk[data-desktop="windows"] .win-frame { border-radius: 8px; box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 18px 48px rgba(0,0,0,.45); }
+.desk[data-desktop="omarchy"] .win-frame { border-radius: 8px; border: 2px solid #7aa2f7; box-shadow: 0 10px 30px rgba(0,0,0,.4); }
 .win-title { flex: none; display: flex; align-items: center; user-select: none; }
 .win-title.mac { height: 28px; position: relative; justify-content: center; background: #ececec; border-bottom: 1px solid #d0d0d0; color: #3a3a3a; font-size: 13px; font-weight: 600; }
 .win-title.mac .lights { position: absolute; left: 10px; display: flex; gap: 8px; }
@@ -527,3 +528,36 @@ p.bmsg-done { cursor: default; }
 .bapp-term { padding: 0 10px; border: 0; background: var(--tint); }
 .bapp-term[aria-pressed="true"] { background: var(--ink); color: var(--win); }
 .bapp-term kbd { font: 11px var(--sans); }
+
+/* Under the app window: what's wrong (if anything) and a refresh button. */
+.win-footer { height: 30px; display: flex; align-items: center; justify-content: flex-end; gap: 10px; padding: 0 2px; }
+.win-status { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 3px 9px; border-radius: 6px; background: rgba(15, 17, 22, .55); backdrop-filter: blur(12px); color: #ffd2cc; font: 500 12px var(--sans); border: 0; cursor: pointer; }
+.win-status:hover { background: rgba(15, 17, 22, .7); }
+.win-refresh { width: 28px; height: 28px; flex: none; display: grid; place-items: center; border: 0; border-radius: 7px; background: rgba(15, 17, 22, .45); backdrop-filter: blur(12px); color: #fff; cursor: pointer; }
+.win-refresh:hover { background: rgba(15, 17, 22, .65); }
+.win-refresh svg { transition: transform .4s; }
+.win-refresh:active svg { transform: rotate(180deg); }
+/* Resize handles: the window's right edge, bottom edge and bottom-right corner. */
+.win-frame { position: relative; }
+.win-resize { position: absolute; z-index: 3; touch-action: none; }
+.win-resize-x { top: 28px; right: 0; bottom: 14px; width: 6px; cursor: ew-resize; }
+.win-resize-y { left: 0; right: 14px; bottom: 0; height: 6px; cursor: ns-resize; }
+.win-resize-xy { right: 0; bottom: 0; width: 14px; height: 14px; cursor: nwse-resize; }
+.desk-window:has(.win-resize:active) { user-select: none; }
+.deka-preview-status { color: #3b3f45; }
+/* Friendly error states. */
+.deka-not-opened { background: #f6f7f5; }
+.not-opened { max-width: 320px; display: flex; flex-direction: column; align-items: center; gap: 10px; text-align: center; color: #2b2f33; }
+.not-opened b { font: 600 18px var(--sans); }
+.not-opened p { margin: 0; color: #5a6066; font-size: 14px; line-height: 1.5; }
+.not-opened button { margin-top: 4px; padding: 9px 18px; border: 0; border-radius: 999px; background: #1f2328; color: #fff; font: 600 14px var(--sans); cursor: pointer; }
+.not-opened button:disabled { opacity: .55; cursor: default; }
+.bmsg-error { padding: 12px 14px; border-radius: 10px; background: var(--tint); }
+.bmsg-error > p { margin: 0; font-size: 13.5px; line-height: 1.5; }
+.bmsg-error-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.bmsg-error-actions button { height: 28px; padding: 0 12px; border: 1px solid var(--edge); border-radius: 999px; background: var(--panel); color: var(--ink); font: 500 12.5px var(--sans); cursor: pointer; }
+.bmsg-error-actions button.primary { border-color: var(--ink); background: var(--ink); color: var(--win); }
+.bmsg-error-actions button:disabled { opacity: .5; cursor: default; }
+.bmsg-error details summary { color: var(--soft); font-size: 12px; cursor: pointer; }
+.bmsg-error details pre { margin: 6px 0 0; padding: 8px 10px; border-left: 0; border-radius: 6px; background: var(--win); font: 11.5px/1.5 var(--mono); white-space: pre-wrap; }
+.bapp-bar .bmode { margin-left: auto; }
