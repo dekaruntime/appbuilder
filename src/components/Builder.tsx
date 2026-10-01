@@ -154,6 +154,39 @@ export default function Builder() {
     void save();
   }, [current?.n, current?.source, building, appName, size]);
 
+  // Every version is recorded in the app's .zega/ history (chat entry +
+  // source), so History can show and reopen every iteration of every idea.
+  const recorded = useRef(new Set<number>());
+  useEffect(() => {
+    if (!projectPath || !isTauri()) return;
+    for (const v of versions) {
+      if (recorded.current.has(v.n)) continue;
+      recorded.current.add(v.n);
+      const { source, ...entry } = v;
+      void invoke('project_record', { path: projectPath, name: appName || app.current.id, entry: { ...entry, at: Date.now() }, source })
+        .catch(reason => { recorded.current.delete(v.n); setFailure(String(reason)); });
+    }
+  }, [versions, projectPath, appName]);
+
+  // Opened from History (/?app=<folder>): restore the app with every version.
+  useEffect(() => {
+    const path = new URLSearchParams(location.search).get('app');
+    if (!path || !isTauri()) return;
+    void invoke<{ id: string; name?: string; versions: Version[] }>('project_history', { path }).then(saved => {
+      if (!saved.versions.length) return;
+      const restored = saved.versions.map(v => ({ ...v, basedOn: v.basedOn ?? null, fixes: v.fixes ?? 0, error: v.error ?? null }));
+      const last = restored[restored.length - 1];
+      app.current = { id: saved.id, created: true };
+      recorded.current = new Set(restored.map(v => v.n));
+      written.current = { source: last.source, modified: null };
+      if (saved.name && saved.name !== saved.id) setAppName(saved.name);
+      setVersions(restored);
+      setShown(last.n);
+      setProjectPath(path);
+      window.history.replaceState(null, '', '/');
+    }).catch(reason => setFailure(String(reason)));
+  }, []);
+
   // Edits made in the folder (Codex in the terminal, an editor) become versions.
   const versionsRef = useRef(versions);
   versionsRef.current = versions;
@@ -251,8 +284,10 @@ export default function Builder() {
     const ask = text.trim();
     if (!ask || !model || building) return;
     const base = fresh ? null : current;
-    if (!base) { app.current = { id: newAppId(), created: false }; written.current = null; setProjectPath(null); }
-    const n = versions.length + 1;
+    // No base means a new app: a fresh id and folder, and its own version list
+    // (the previous app stays in History).
+    if (!base) { app.current = { id: newAppId(), created: false }; written.current = null; recorded.current = new Set(); setProjectPath(null); setVersions([]); }
+    const n = base ? versions.length + 1 : 1;
     const how: Mode = base ? mode : 'full';
     setAsk(''); setFailure(null); setPreview('');
     setBuilding({ ask, basedOn: base?.n ?? null, mode: how, ops: 0, started: performance.now(), writing: false });

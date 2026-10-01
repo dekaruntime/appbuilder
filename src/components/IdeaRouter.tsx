@@ -12,7 +12,9 @@ export const IDEA_EVENT = 'zega-idea';
 
 export default function IdeaRouter() {
   useEffect(() => {
-    if (!isTauri() || getCurrentWindow().label !== 'main') return;
+    let label = '';
+    try { label = getCurrentWindow().label; } catch { return; }
+    if (!isTauri() || label !== 'main') return;
     let unlisten: (() => void) | undefined;
     void listen<string>('builder-idea', event => {
       try { sessionStorage.setItem(PENDING_IDEA, event.payload); } catch { return; }

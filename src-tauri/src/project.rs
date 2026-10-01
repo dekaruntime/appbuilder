@@ -101,6 +101,114 @@ pub fn project_read(path: String) -> ProjectFile {
     read(Path::new(&path))
 }
 
+// --- History: every version of every app, kept in the app's own folder -----
+//
+// .zega/history.json is the app's chat (one entry per version, as the builder
+// shows it); .zega/versions/v<n>.dsx is the source at that version. The
+// builder records each version as it lands, including edits made in the
+// folder, so History can show every idea and every iteration and reopen them.
+
+const HISTORY_DIR: &str = ".zega";
+const HISTORY_FILE: &str = "history.json";
+
+fn history_path(dir: &Path) -> PathBuf {
+    dir.join(HISTORY_DIR).join(HISTORY_FILE)
+}
+
+fn version_path(dir: &Path, n: u64) -> PathBuf {
+    dir.join(HISTORY_DIR).join("versions").join(format!("v{n}.dsx"))
+}
+
+fn read_history(dir: &Path) -> serde_json::Value {
+    fs::read_to_string(history_path(dir))
+        .ok()
+        .and_then(|text| serde_json::from_str(&text).ok())
+        .unwrap_or_else(|| serde_json::json!({ "versions": [] }))
+}
+
+/// Record one version: its chat entry (`entry`, whatever the builder shows,
+/// with `n`) and its source. Re-recording a version replaces it.
+fn record(dir: &Path, name: &str, entry: serde_json::Value, source: &str) -> Result<()> {
+    let n = entry["n"].as_u64().ok_or("A version needs a number.")?;
+    fs::create_dir_all(dir.join(HISTORY_DIR).join("versions")).map_err(|e| format!("Could not create the history folder: {e}"))?;
+    fs::write(version_path(dir, n), source).map_err(|e| format!("Could not save version {n}: {e}"))?;
+    let mut history = read_history(dir);
+    history["name"] = serde_json::json!(name);
+    let versions = history["versions"].as_array_mut().ok_or("The history file is damaged.")?;
+    versions.retain(|v| v["n"].as_u64() != Some(n));
+    versions.push(entry);
+    versions.sort_by_key(|v| v["n"].as_u64().unwrap_or(0));
+    let text = serde_json::to_string_pretty(&history).map_err(|e| e.to_string())?;
+    // Write then rename, so a crash never leaves a half-written history.
+    let tmp = history_path(dir).with_extension("json.tmp");
+    fs::write(&tmp, text).map_err(|e| format!("Could not save the history: {e}"))?;
+    fs::rename(&tmp, history_path(dir)).map_err(|e| format!("Could not save the history: {e}"))
+}
+
+#[tauri::command]
+pub fn project_record(path: String, name: String, entry: serde_json::Value, source: String) -> Result<()> {
+    record(Path::new(&path), &name, entry, &source)
+}
+
+#[derive(Serialize)]
+pub struct AppSummary {
+    path: String,
+    id: String,
+    name: String,
+    first_ask: Option<String>,
+    versions: usize,
+    updated_ms: Option<u64>,
+}
+
+fn list(root: &Path) -> Vec<AppSummary> {
+    let Ok(entries) = fs::read_dir(root) else { return Vec::new() };
+    let mut apps: Vec<AppSummary> = entries
+        .flatten()
+        .filter(|e| e.path().join(HISTORY_DIR).join(HISTORY_FILE).is_file())
+        .map(|e| {
+            let dir = e.path();
+            let history = read_history(&dir);
+            let versions = history["versions"].as_array().cloned().unwrap_or_default();
+            let id = e.file_name().to_string_lossy().into_owned();
+            let updated_ms = fs::metadata(history_path(&dir)).and_then(|m| m.modified()).ok()
+                .and_then(|t| t.duration_since(UNIX_EPOCH).ok()).map(|d| d.as_millis() as u64);
+            AppSummary {
+                path: dir.to_string_lossy().into_owned(),
+                name: history["name"].as_str().map(str::to_owned).unwrap_or_else(|| id.clone()),
+                id,
+                first_ask: versions.first().and_then(|v| v["ask"].as_str()).map(str::to_owned),
+                versions: versions.len(),
+                updated_ms,
+            }
+        })
+        .collect();
+    apps.sort_by_key(|a| std::cmp::Reverse(a.updated_ms));
+    apps
+}
+
+/// Every app with a history, most recently changed first.
+#[tauri::command]
+pub fn project_list(app: tauri::AppHandle) -> Result<Vec<AppSummary>> {
+    Ok(list(&apps_root(&app)?))
+}
+
+/// One app's whole history: its chat entries, each with the source it had.
+#[tauri::command]
+pub fn project_history(path: String) -> Result<serde_json::Value> {
+    let dir = Path::new(&path);
+    let mut history = read_history(dir);
+    if let Some(versions) = history["versions"].as_array_mut() {
+        for version in versions {
+            if let Some(n) = version["n"].as_u64() {
+                version["source"] = serde_json::json!(fs::read_to_string(version_path(dir, n)).unwrap_or_default());
+            }
+        }
+    }
+    history["path"] = serde_json::json!(path);
+    history["id"] = serde_json::json!(dir.file_name().map(|f| f.to_string_lossy().into_owned()).unwrap_or_default());
+    Ok(history)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -124,6 +232,28 @@ mod tests {
         // Saving an existing app updates it in place.
         write_project(root.path(), "excited-strawberry-x83k", "Horse Tinder", "c", (420, 640), "agents", false).unwrap();
         assert_eq!(read(Path::new(&first.path)).source.as_deref(), Some("c"));
+    }
+
+    #[test]
+    fn history_keeps_every_version_and_lists_apps() {
+        let root = tempfile::tempdir().unwrap();
+        let app = write_project(root.path(), "glad-tiger-ir8r", "Horse Tinder", "v1 source", (420, 640), "agents", true).unwrap();
+        let dir = Path::new(&app.path);
+        record(dir, "Horse Tinder", serde_json::json!({ "n": 1, "ask": "make horse tinder" }), "v1 source").unwrap();
+        record(dir, "Horse Tinder", serde_json::json!({ "n": 2, "ask": "more horses" }), "v2 source").unwrap();
+        // Re-recording a version replaces it rather than duplicating it.
+        record(dir, "Horse Tinder", serde_json::json!({ "n": 2, "ask": "more horses", "fixes": 1 }), "v2 fixed").unwrap();
+        let history = project_history(app.path.clone()).unwrap();
+        let versions = history["versions"].as_array().unwrap();
+        assert_eq!(versions.len(), 2);
+        assert_eq!(versions[0]["source"], "v1 source");
+        assert_eq!(versions[1]["source"], "v2 fixed");
+        assert_eq!(versions[1]["fixes"], 1);
+        let apps = list(root.path());
+        assert_eq!(apps.len(), 1);
+        assert_eq!(apps[0].first_ask.as_deref(), Some("make horse tinder"));
+        assert_eq!(apps[0].versions, 2);
+        assert_eq!(apps[0].name, "Horse Tinder");
     }
 
     #[test]
