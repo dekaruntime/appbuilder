@@ -69,8 +69,28 @@ export default function Builder() {
   // last wrote there, and the terminal that opens in it.
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const written = useRef<{ source: string; modified: number | null } | null>(null);
-  const [terminalOpen, setTerminalOpen] = useState(false);
+  // Chat and terminal are one side at a time: opening the terminal hides the
+  // chat, closing it brings the chat back; ⌘K shows the chat and closes the
+  // terminal (or hides the chat for a full-width desktop).
+  const [side, setSide] = useState<'chat' | 'terminal' | 'none'>('chat');
+  const terminalOpen = side === 'terminal';
+  const setTerminalOpen = (open: boolean | ((open: boolean) => boolean)) =>
+    setSide(current => (typeof open === 'function' ? open(current === 'terminal') : open) ? 'terminal' : 'chat');
   const [terminalCommand, setTerminalCommand] = useState<string | null>(null);
+  const chatOpen = side === 'chat';
+  // ⌘J toggles the terminal, ⌘K the chat (Ctrl on Windows and Linux). Caught
+  // before the terminal sees the keys, so they work while typing in a shell.
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => {
+      const mod = /Mac/.test(navigator.userAgent) ? event.metaKey : event.ctrlKey;
+      if (!mod || event.shiftKey || event.altKey) return;
+      const key = event.key.toLowerCase();
+      if (key === 'j') { event.preventDefault(); event.stopPropagation(); setTerminalCommand(null); setTerminalOpen(open => !open); }
+      if (key === 'k') { event.preventDefault(); event.stopPropagation(); setSide(current => current === 'chat' ? 'none' : 'chat'); }
+    };
+    addEventListener('keydown', onKey, true);
+    return () => removeEventListener('keydown', onKey, true);
+  }, []);
   // One prompt-cache key per session: its requests share an opening.
   const session = useRef(`zega-builder-${crypto.randomUUID()}`);
   const lastDraw = useRef(0);
@@ -290,7 +310,7 @@ export default function Builder() {
     </form>
   </>;
 
-  return <div className="builder">
+  return <div className="builder" data-chat={chatOpen ? 'shown' : 'hidden'}>
     <BuilderRail current="build" />
     <section className="bchat" aria-label="Chat">{chat}</section>
     <nav className="bversions" aria-label="Versions">
@@ -304,7 +324,7 @@ export default function Builder() {
           {SIZES.map(s => <option key={s.join('x')} value={s.join('x')}>{s[0]} × {s[1]}</option>)}
         </select>
         <button type="button" className="bapp-run" disabled={!projectPath} onClick={runOnDesktop}>Run on desktop</button>
-        <button type="button" className="bapp-term" aria-pressed={terminalOpen} onClick={() => { setTerminalCommand(null); setTerminalOpen(open => !open); }}>Terminal</button>
+        <button type="button" className="bapp-term" aria-pressed={terminalOpen} onClick={() => { setTerminalCommand(null); setTerminalOpen(open => !open); }} title="Toggle terminal (⌘J)">Terminal <kbd>⌘J</kbd></button>
         <span className="bmode" role="group" aria-label="Desktop">
           {DESKTOPS.map(d => <button key={d.id} type="button" aria-pressed={desktop === d.id} onClick={() => setDesktop(d.id)}>{d.label}</button>)}
         </span>

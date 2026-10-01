@@ -97,13 +97,15 @@ export default function TerminalPane({ path, open, command, onHide }: {
   const drag = useRef<{ origin: number; size: number } | null>(null);
   useEffect(() => { if (open) setStarted(true); }, [open]);
   const clamp = (n: number) => Math.max(320, Math.min(n, innerWidth - 420));
-  return <aside className="terminal-slide" data-open={open} style={{ width }} aria-label="Terminal" aria-hidden={!open}>
+  // Width animates from 0, pushing the desktop aside like the sidebar does;
+  // the inner panel keeps its full width so the shell never reflows mid-slide.
+  return <aside className="terminal-slide" data-open={open} style={{ width: open ? width : 0 }} aria-label="Terminal" aria-hidden={!open}>
     <div role="separator" aria-label="Resize terminal" aria-orientation="vertical" tabIndex={open ? 0 : -1} className="terminal-divider"
       onPointerDown={e => { drag.current = { origin: e.clientX, size: width }; e.currentTarget.setPointerCapture(e.pointerId); }}
       onPointerMove={e => { if (drag.current) setWidth(clamp(drag.current.size + drag.current.origin - e.clientX)); }}
       onPointerUp={() => { drag.current = null; }} onLostPointerCapture={() => { drag.current = null; }}
       onKeyDown={e => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') { e.preventDefault(); setWidth(clamp(width + (e.key === 'ArrowLeft' ? 24 : -24))); } }} />
-    <div className="terminal-panel">
+    <div className="terminal-panel" style={{ width: width - 5 }}>
       <header className="terminal-header"><span title={path ?? ''}>{path ? path.replace(/^.*\/Zega Apps\//, '~/Documents/Zega Apps/') : 'terminal'}</span><div>
         <button type="button" onClick={onHide}>hide</button>
         <button type="button" aria-label="Close terminal session" onClick={() => { setStarted(false); setGeneration(n => n + 1); onHide(); }}>×</button>
