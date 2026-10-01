@@ -359,7 +359,9 @@ export default function Builder() {
     const done = await request(question, SKETCH_INSTRUCTIONS, text => {
       answer += text;
       const now = performance.now();
-      if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(extractSketch(answer)); }
+      // Only whole lines while streaming: a half-written line would show as
+      // one kind of block, then morph into another a moment later.
+      if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(extractSketch(answer.slice(0, answer.lastIndexOf('\n') + 1))); }
     });
     return done && { sketch: extractSketch(answer), done, made: { how: 'full' } as Made };
   };
