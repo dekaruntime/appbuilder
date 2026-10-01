@@ -9,6 +9,9 @@ use tauri::ActivationPolicy;
 use tauri::Wry;
 use tauri::{AppHandle, Emitter, Manager, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
+const LAUNCHER_WIDTH: f64 = 680.0;
+const LAUNCHER_HEIGHT: f64 = 108.0;
+
 /// The tray menu's "Restart to update" entry, kept so the update module can
 /// light it up once a download has finished (APS 37: apply on next restart).
 /// Package-manager builds (`packaged` feature) have no updater and no item.
@@ -167,11 +170,12 @@ fn search_window(app: &AppHandle) -> tauri::Result<WebviewWindow> {
         // and resolves to `launcher/index.html` in the static bundle.
         WebviewUrl::App("launcher/".into()),
     )
-    .title("zega Search")
-    .inner_size(680.0, 440.0)
+    .title("zega")
+    // Just the prompt and its footer: "What are we building today?"
+    .inner_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT)
     // Wayland compositors need matching limits to recognize a fixed-size panel.
-    .min_inner_size(680.0, 440.0)
-    .max_inner_size(680.0, 440.0)
+    .min_inner_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT)
+    .max_inner_size(LAUNCHER_WIDTH, LAUNCHER_HEIGHT)
     .resizable(false)
     .decorations(false)
     .transparent(true)

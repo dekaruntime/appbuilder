@@ -6,6 +6,7 @@ import BuilderRail from './BuilderRail';
 import DekaPreview from './DekaPreview';
 import DesktopStage, { defaultDesktop, type DesktopTheme } from './DesktopStage';
 import TerminalPane from './TerminalPane';
+import { IDEA_EVENT, PENDING_IDEA } from './IdeaRouter';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
 import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
 import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
@@ -227,10 +228,11 @@ export default function Builder() {
     return done && { source, done, ops, missed, full };
   };
 
-  const build = async (text: string) => {
+  // fresh: a new app from nothing, ignoring the version on screen.
+  const build = async (text: string, fresh = false) => {
     const ask = text.trim();
     if (!ask || !model || building) return;
-    const base = current;
+    const base = fresh ? null : current;
     const n = versions.length + 1;
     const how: Mode = base ? mode : 'full';
     setAsk(''); setFailure(null); setPreview('');
@@ -269,6 +271,31 @@ export default function Builder() {
       setBuilding(null);
     }
   };
+
+  // An idea from the floating prompt: start a fresh app with it as soon as
+  // ChatGPT and a model are ready (on launch or while the builder is open).
+  const [pendingIdea, setPendingIdea] = useState<string | null>(null);
+  useEffect(() => {
+    const take = () => {
+      try {
+        const idea = sessionStorage.getItem(PENDING_IDEA);
+        if (idea) { sessionStorage.removeItem(PENDING_IDEA); setPendingIdea(idea); }
+      } catch { /* storage unavailable */ }
+    };
+    take();
+    addEventListener(IDEA_EVENT, take);
+    return () => removeEventListener(IDEA_EVENT, take);
+  }, []);
+  const buildRef = useRef(build);
+  buildRef.current = build;
+  useEffect(() => {
+    if (!pendingIdea || !model || building) return;
+    const idea = pendingIdea;
+    setPendingIdea(null);
+    setSide(current => current === 'none' ? 'chat' : current);
+    // A new idea is a new app: build from nothing, not on top of the shown version.
+    void buildRef.current(idea, true);
+  }, [pendingIdea, model, building]);
 
   const status = (b: Building) => b.mode === 'fix' ? `Fixing a compile error in v${versions.length + 1} · ${elapsed(b.started)}${b.writing ? ` · ${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : ''}…`
     : `${b.mode === 'rixse' ? 'Editing' : 'Building'} v${versions.length + 1}${b.basedOn ? ` from v${b.basedOn}` : ''} · ${elapsed(b.started)} · ${b.writing ? (b.mode === 'rixse' ? `${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : 'writing') : 'thinking'}…`;

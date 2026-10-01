@@ -463,3 +463,6 @@ p.bmsg-done { cursor: default; }
 .bapp-term kbd { margin-left: 4px; font: 10.5px var(--mono); opacity: .6; }
 .builder-settings label { display: flex; align-items: center; justify-content: space-between; gap: 16px; max-width: 460px; padding: 6px 0; font-size: 14px; }
 .builder-settings select { min-width: 220px; padding: 4px 6px; border: 1px solid var(--edge); border-radius: 4px; background: var(--panel); color: var(--ink); font: 13px var(--sans); }
+.float-prompt .float-search input { font-size: 22px; }
+.float-prompt .lfoot { margin-top: auto; }
+.float-failure { margin: 0; padding: 4px 14px; color: #c03b2e; font-size: 12px; }

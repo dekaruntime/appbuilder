@@ -2,19 +2,17 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { invoke, isTauri } from '@tauri-apps/api/core';
-import { listen } from '@tauri-apps/api/event';
+import { emitTo, listen } from '@tauri-apps/api/event';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 
-import { useGraphSearch, openGraphResult, GraphResult, resultGroups, resultGroupLabels } from '../../lib/index-search';
-import ResultIcon from '../../components/ResultIcon';
 import SearchBar from '../../components/SearchBar';
 
-export default function FloatingSearch() {
-  const [query, setQuery] = useState('');
-  const { results, loading, error } = useGraphSearch(query);
-  const [openError, setOpenError] = useState<string | null>(null);
-  const [active, setActive] = useState(0);
+// The floating prompt: one question, no results. Enter hands the idea to the
+// builder in the main window, which comes forward and starts building it.
+export default function FloatingPrompt() {
+  const [idea, setIdea] = useState('');
   const [visible, setVisible] = useState(true);
+  const [failure, setFailure] = useState<string | null>(null);
   const [nativeMaterial, setNativeMaterial] = useState(false);
   const [windows, setWindows] = useState(false);
   const [squareCorners, setSquareCorners] = useState(false);
@@ -23,13 +21,13 @@ export default function FloatingSearch() {
   useEffect(() => {
     input.current?.focus();
     if (!isTauri()) return;
-    void invoke<{platform: string; squareCorners: boolean}>('shortcut_status')
+    void invoke<{ platform: string; squareCorners: boolean }>('shortcut_status')
       .then(status => { setNativeMaterial(status.platform === 'macos'); setWindows(status.platform === 'windows'); setSquareCorners(status.squareCorners); })
       .catch(() => setNativeMaterial(false));
     let unlisten: (() => void) | undefined;
     void listen('launcher-opened', () => {
-      setQuery('');
-      setActive(0);
+      setIdea('');
+      setFailure(null);
       setVisible(true);
       requestAnimationFrame(() => input.current?.focus());
     }).then(stop => { unlisten = stop; });
@@ -43,62 +41,32 @@ export default function FloatingSearch() {
 
   useEffect(() => {
     const onEscape = (event: KeyboardEvent) => {
-      if (event.key === 'Escape') {
-        event.preventDefault();
-        void close();
-      }
+      if (event.key === 'Escape') { event.preventDefault(); void close(); }
     };
     window.addEventListener('keydown', onEscape, true);
     return () => window.removeEventListener('keydown', onEscape, true);
   }, [close]);
 
-  const openZega = async () => {
-    try { await invoke('show_main_window'); } catch { /* Browser mock has no main window. */ }
-    await close();
-  };
-
-  const open = async (result: GraphResult) => {
-    try { await openGraphResult(result); setOpenError(null); await close(); }
-    catch (error) { setOpenError(String(error)); }
-  };
-  useEffect(() => { setActive(index => Math.min(index, Math.max(0, results.length - 1))); }, [results]);
-
-  const onKeyDown = (event: React.KeyboardEvent<HTMLInputElement>) => {
-    if (event.key === 'ArrowDown' && results.length) { event.preventDefault(); setActive(index => (index + 1) % results.length); }
-    if (event.key === 'ArrowUp' && results.length) { event.preventDefault(); setActive(index => (index - 1 + results.length) % results.length); }
-    if ((windows ? event.ctrlKey : event.metaKey) && event.key === 'Enter') { event.preventDefault(); void openZega(); return; }
-    if (event.key === 'Enter' && results[active]) { event.preventDefault(); void open(results[active]); }
+  const build = async () => {
+    const text = idea.trim();
+    if (!text) return;
+    try {
+      await emitTo('main', 'builder-idea', text);
+      await invoke('show_main_window');
+      await close();
+    } catch (error) { setFailure(String(error)); }
   };
 
   if (!visible) return <main className="float-root" aria-hidden="true" />;
-  let resultIndex = -1;
-  const renderGroup = (title: string, rows: GraphResult[]) => rows.length > 0 && <section className="float-group" aria-label={title}>
-    <h2 className="lsec">{title}</h2>
-    {rows.map(result => {
-      resultIndex += 1;
-      const index = resultIndex;
-      return <button key={result.key} disabled={result.offline} className={`lrow ${index === active ? 'sel' : ''}`} type="button" role="option" aria-selected={index === active} onMouseEnter={() => setActive(index)} onClick={() => void open(result)}>
-        <ResultIcon result={result} />
-        <span><b>{result.name}</b><small>{result.offline ? 'Offline · ' : ''}{result.path.startsWith('shell:AppsFolder\\') ? 'Application' : result.path}</small></span>
-        <span className="hint">↵</span>
-      </button>;
-    })}
-  </section>;
-
-  return <main className="float-root" data-native-material={nativeMaterial} data-square-corners={squareCorners}><div className="launcher float-panel" role="dialog" aria-label="zega floating search">
-    <SearchBar className="float-search" inputRef={input} label={windows ? 'Search this computer' : 'Search this Mac'} value={query} onChange={value => { setQuery(value); setActive(0); }} onSubmit={() => { if (results[active]) void open(results[active]); }} onKeyDown={onKeyDown} />
-    <div className="lres" role="listbox" aria-label="Local results">
-      {resultGroups.map(group => <div key={group}>{renderGroup(resultGroupLabels[group], results.filter(row => row.kind === group))}</div>)}
-      {(error || openError) && <p role="alert">{error || openError}</p>}
-      {loading ? <div className="skeleton" aria-label="Loading local results" /> : !results.length && <p className="float-empty">No local matches.</p>}
-    </div>
-    {/* No header: the search box is the topmost thing (Sami, desktop#39). The
-        footer carries the wordmark and is where the window is dragged from. */}
+  return <main className="float-root" data-native-material={nativeMaterial} data-square-corners={squareCorners}><div className="launcher float-panel float-prompt" role="dialog" aria-label="zega: what are we building today?">
+    <SearchBar className="float-search" inputRef={input} label="What are we building today?" placeholder="What are we building today?" value={idea} onChange={setIdea} onSubmit={() => void build()} />
+    {failure && <p role="alert" className="float-failure">{failure}</p>}
+    {/* The footer carries the wordmark and is where the window is dragged from. */}
     <footer className="lfoot" onMouseDown={event => {
       if (event.button === 0 && isTauri()) {
         event.preventDefault();
-        void getCurrentWindow().startDragging().catch(error => console.error('Could not move search window', error));
+        void getCurrentWindow().startDragging().catch(error => console.error('Could not move the prompt window', error));
       }
-    }}><span><kbd className="kbd">↑↓</kbd> Navigate</span><span><kbd className="kbd">↵</kbd> Open</span><span><kbd className="kbd">esc</kbd> Close</span><span className="float-word">zega <span className="v">computer</span></span></footer>
+    }}><span><kbd className="kbd">↵</kbd> Build it</span><span><kbd className="kbd">esc</kbd> Close</span><span className="float-word">zega</span></footer>
   </div></main>;
 }
