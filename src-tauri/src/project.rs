@@ -209,6 +209,56 @@ pub fn project_history(path: String) -> Result<serde_json::Value> {
     Ok(history)
 }
 
+// --- Run on desktop: `deka dev` in the app's folder ---------------------------
+//
+// The real native window, with deka's fast refresh: every version the builder
+// saves to app.dsx shows up there too. One run at a time; a new run replaces
+// the last. Output goes to .zega/run.log for troubleshooting.
+
+/// `deka` from the usual install places, else the local 0.60.1 build until
+/// the native CLI is published to R2 (deka#1198). A GUI app doesn't get the
+/// shell's PATH, so the locations are checked directly.
+fn deka_cli() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME").map(PathBuf::from).unwrap_or_default();
+    [home.join(".deka/bin/deka"), PathBuf::from("/usr/local/bin/deka"), PathBuf::from("/opt/homebrew/bin/deka"), PathBuf::from("/Volumes/Projects/claude/deka-runtime-0.60.1/bin/deka")]
+        .into_iter()
+        .find(|p| p.is_file())
+}
+
+#[derive(Default)]
+pub struct RunState(std::sync::Mutex<Option<std::process::Child>>);
+
+impl Drop for RunState {
+    fn drop(&mut self) {
+        if let Some(mut child) = self.0.lock().ok().and_then(|mut c| c.take()) {
+            let _ = child.kill();
+            let _ = child.wait();
+        }
+    }
+}
+
+#[tauri::command]
+pub fn project_run(state: tauri::State<'_, RunState>, path: String) -> Result<()> {
+    let dir = Path::new(&path);
+    let cli = deka_cli().ok_or("The deka CLI isn't installed yet.")?;
+    let mut running = state.0.lock().map_err(|_| "Run state unavailable.".to_string())?;
+    if let Some(mut previous) = running.take() {
+        let _ = previous.kill();
+        let _ = previous.wait();
+    }
+    fs::create_dir_all(dir.join(HISTORY_DIR)).map_err(|e| e.to_string())?;
+    let log = fs::File::create(dir.join(HISTORY_DIR).join("run.log")).map_err(|e| format!("Could not open the run log: {e}"))?;
+    let child = std::process::Command::new(cli)
+        .args(["dev", MANIFEST])
+        .current_dir(dir)
+        .stdout(log.try_clone().map_err(|e| e.to_string())?)
+        .stderr(log)
+        .spawn()
+        .map_err(|e| format!("Could not start deka dev: {e}"))?;
+    *running = Some(child);
+    Ok(())
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

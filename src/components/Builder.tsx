@@ -11,7 +11,7 @@ import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/c
 import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
 import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
 import { compileError } from '../lib/deka/runtime';
-import { formatMs, formatTokens, reportTiming, type Tokens } from '../lib/timing';
+import { formatMs, formatTokens, reportTiming, useLastTiming, type Tokens } from '../lib/timing';
 import { WINDOW_SIZES, readStartup } from '../lib/builder-startup';
 import { newAppId } from '../lib/app-name';
 
@@ -64,6 +64,7 @@ export default function Builder() {
   const [mode, setMode] = useState<Mode>('rixse');
   const [, setTick] = useState(0);
   const [failure, setFailure] = useState<string | null>(null);
+  const lastTiming = useLastTiming();
   const [desktop, setDesktop] = useState<DesktopTheme>('macos');
   const [size, setSize] = useState<readonly [number, number]>(SIZES[1]);
   const [appName, setAppName] = useState('');
@@ -208,13 +209,14 @@ export default function Builder() {
     return () => clearInterval(timer);
   }, [projectPath, building, shown]);
 
-  // The real native window, with fast refresh: every version the builder saves
-  // to the folder shows up there too. Uses `deka` on PATH, else the local
-  // 0.60.1 build until the native CLI is published to R2 (deka#1198).
+  // The real native window (`deka dev`, run by the app in the background), with
+  // fast refresh: every version the builder saves shows up there too.
+  const [running, setRunning] = useState(false);
   const runOnDesktop = () => {
-    setTerminalCommand(`"$(command -v deka || echo /Volumes/Projects/claude/deka-runtime-0.60.1/bin/deka)" dev deka.json`);
-    setTerminalOpen(true);
+    if (!projectPath) return;
+    void invoke('project_run', { path: projectPath }).then(() => { setRunning(true); setFailure(null); }).catch(reason => setFailure(String(reason)));
   };
+
 
   const fixInTerminal = (error: string) => {
     const prompt = `The deka app in app.dsx fails to compile in the zega preview with: ${error}. Read AGENTS.md for the runtime's limits, then fix app.dsx.`;
@@ -381,21 +383,30 @@ export default function Builder() {
       </div>}
       {failure && <p className="bmsg-fail" role="alert">{failure}</p>}
     </div>
-    <form className="bchat-compose" onSubmit={event => { event.preventDefault(); void build(ask); }}>
-      <textarea aria-label="Describe the app" rows={3} value={ask} onChange={event => setAsk(event.target.value)}
+    <form className="composer" onSubmit={event => { event.preventDefault(); void build(ask); }}>
+      <textarea aria-label="Describe the app" rows={2} value={ask} onChange={event => setAsk(event.target.value)}
         placeholder={current ? `Change v${current.n}…` : 'Describe an app…'}
         onKeyDown={event => { if (event.key === 'Enter' && !event.shiftKey) { event.preventDefault(); void build(ask); } }} />
-      <div className="bchat-row">
-        <select aria-label="Model" value={model} onChange={event => setModel(event.target.value)} disabled={!models.length}>
-          {models.map(m => <option key={m.slug} value={m.slug}>{m.display_name}</option>)}
-        </select>
-        {current && <span className="bmode" role="group" aria-label="How changes are made">
-          {(['rixse', 'full'] as const).map(m => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} title={m === 'rixse' ? 'Edit the app in place' : 'Rewrite the whole app'}>{m === 'rixse' ? 'rixse edit' : 'Full rewrite'}</button>)}
+      <div className="composer-bar">
+        <label className="composer-model">
+          <span className="sr-only">Model</span>
+          <select value={model} onChange={event => setModel(event.target.value)} disabled={!models.length}>
+            {models.map(m => <option key={m.slug} value={m.slug}>{m.display_name}</option>)}
+          </select>
+        </label>
+        {current && <span className="composer-mode" role="group" aria-label="How changes are made">
+          {(['rixse', 'full'] as const).map(m => <button key={m} type="button" aria-pressed={mode === m} onClick={() => setMode(m)} title={m === 'rixse' ? 'Edit the app in place' : 'Rewrite the whole app'}>{m === 'rixse' ? 'Edit' : 'Rewrite'}</button>)}
         </span>}
-        <small>Using ChatGPT plan · <button type="button" className="chatgpt-link" onClick={openUsage}>Usage</button></small>
-        <button type="submit" className="bchat-go" disabled={!!building || !ask.trim() || !model}>{building ? `Building ${elapsed(building.started)}` : 'Build'}</button>
+        {building && <span className="composer-timer" aria-live="off">{elapsed(building.started)}</span>}
+        <button type="submit" className="composer-send" disabled={!!building || !ask.trim() || !model} aria-label={building ? 'Building' : 'Build'} title="Build (Enter)">
+          {building ? <span className="composer-spin" aria-hidden="true" /> : <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 19V5" /><path d="m5 12 7-7 7 7" /></svg>}
+        </button>
       </div>
     </form>
+    <p className="composer-foot">
+      <span>Using ChatGPT plan · <button type="button" className="chatgpt-link" onClick={openUsage}>Usage</button></span>
+      {lastTiming && <span>{lastTiming.label} in {formatMs(lastTiming.ms)}{lastTiming.tokens ? ` · ${formatTokens(lastTiming.tokens)}` : ''}</span>}
+    </p>
   </>;
 
   return <div className="builder" data-chat={chatOpen ? 'shown' : 'hidden'}>
@@ -411,7 +422,7 @@ export default function Builder() {
         <select aria-label="Window size" value={size.join('x')} onChange={event => setSize(SIZES.find(s => s.join('x') === event.target.value) ?? SIZES[1])}>
           {SIZES.map(s => <option key={s.join('x')} value={s.join('x')}>{s[0]} × {s[1]}</option>)}
         </select>
-        <button type="button" className="bapp-run" disabled={!projectPath} onClick={runOnDesktop}>Run on desktop</button>
+        <button type="button" className="bapp-run" disabled={!projectPath} onClick={runOnDesktop} title="Open the app in a real window; it follows every edit">{running ? 'Restart on desktop' : 'Run on desktop'}</button>
         <button type="button" className="bapp-term" aria-pressed={terminalOpen} onClick={() => { setTerminalCommand(null); setTerminalOpen(open => !open); }} title="Toggle terminal (⌘J)">Terminal <kbd>⌘J</kbd></button>
         <span className="bmode" role="group" aria-label="Desktop">
           {DESKTOPS.map(d => <button key={d.id} type="button" aria-pressed={desktop === d.id} onClick={() => setDesktop(d.id)}>{d.label}</button>)}

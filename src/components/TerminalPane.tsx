@@ -29,6 +29,7 @@ function Terminal({ path, visible, command }: { path: string; visible: boolean; 
   const shown = useRef(visible);
   shown.current = visible;
   const send = useRef<((text: string) => void) | null>(null);
+  const commandSent = useRef(false);
   const [error, setError] = useState<string | null>(null);
   const [ended, setEnded] = useState(false);
 
@@ -61,7 +62,15 @@ function Terminal({ path, visible, command }: { path: string; visible: boolean; 
         const retheme = () => { term.options.theme = theme(); };
         const media = matchMedia('(prefers-color-scheme: dark)');
         media.addEventListener('change', retheme);
-        void session.ready.then(() => { if (!gone) { resizePty(); if (shown.current) term.focus(); } }).catch(e => report(String(e)));
+        void session.ready.then(() => {
+          if (gone) return;
+          resizePty();
+          if (shown.current) term.focus();
+          // A plain shell with `codex` already typed at the prompt: Enter starts
+          // it; clearing the line leaves an ordinary terminal. Waits a moment so
+          // the shell has drawn its prompt (login rc files print first).
+          setTimeout(() => { if (!gone && !commandSent.current) session.write(new TextEncoder().encode('codex')); }, 600);
+        }).catch(e => report(String(e)));
         dispose = () => {
           observer.disconnect(); cancelAnimationFrame(frame); media.removeEventListener('change', retheme);
           clearTimeout(ptyResize); data.dispose(); binary.dispose(); resize.dispose();
@@ -75,9 +84,11 @@ function Terminal({ path, visible, command }: { path: string; visible: boolean; 
   useEffect(() => { if (visible) { fit.current?.(); terminal.current?.focus(); } }, [visible]);
   // A command handed in from the builder (e.g. "start Codex on this error"):
   // typed once the shell is up, as if the user had typed it.
+  // Ctrl-U first clears whatever is on the prompt line (e.g. the typed `codex`).
   useEffect(() => {
     if (!command) return;
-    const timer = setTimeout(() => send.current?.(`${command}\r`), send.current ? 0 : 900);
+    commandSent.current = true;
+    const timer = setTimeout(() => send.current?.(`\x15${command}\r`), send.current ? 0 : 900);
     return () => clearTimeout(timer);
   }, [command]);
 

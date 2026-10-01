@@ -79,6 +79,7 @@ pub fn run() {
             project::project_record,
             project::project_list,
             project::project_history,
+            project::project_run,
             term::term_open,
             term::term_write,
             term::term_resize,
@@ -125,6 +126,7 @@ pub fn run() {
             let chatgpt = ChatGptState::new(app.handle().clone()).map_err(|error| error.to_string())?;
             app.manage(Arc::new(chatgpt));
             app.manage(term::TermState::default());
+            app.manage(project::RunState::default());
             app.manage(Arc::new(earth::EarthState::new().map_err(|error| error.to_string())?));
             #[cfg(target_os = "linux")]
             if let Err(error) = desktop_identity::prepare(app.handle()) {
