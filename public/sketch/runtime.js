@@ -166,6 +166,17 @@ window.addEventListener('message', event => {
   applyTheme();
   try { render(); report('ready', screen); } catch (e) { report('error', e.message); }
 });
+// A picture of the sketch, drawn in code (html2canvas renders this page onto
+// a canvas), for the model to compare against the real app.
+window.addEventListener('message', event => {
+  if (event.source !== parent || !event.data || !event.data.zegaSnapshot) return;
+  const id = event.data.zegaSnapshot;
+  const send = url => parent.postMessage({ zegaSnapshotResult: id, url }, '*');
+  if (typeof html2canvas !== 'function') { send(null); return; }
+  html2canvas(document.body, { logging: false, scale: 1, backgroundColor: null })
+    .then(canvas => send(canvas.toDataURL('image/png')))
+    .catch(error => { report('snapshot', error && error.message); send(null); });
+});
 window.addEventListener('error', e => report('error', e.message));
 try { render(); report('ready', screen); } catch (e) { report('error', e.message); }
 })();

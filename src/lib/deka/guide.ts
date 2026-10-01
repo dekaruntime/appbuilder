@@ -109,3 +109,10 @@ export function fixRequest(error: string, source: string): string {
 export function extractSource(answer: string): string {
   return answer.replace(/^\s*```[a-z]*\s*\n?/i, '').replace(/\n?```\s*$/, '').trim() + '\n';
 }
+
+/** Make it real's check: the sketch (image 1) is the spec, the app (image 2) must match it. */
+export function compareRequest(source: string): string {
+  return `Current source (app.dsx):\n\n${source}\n\nImage 1 is the SKETCH: it is the spec. Image 2 is the real app as it renders now from this source.
+Compare them carefully: layout (columns, sidebars, grids, what sits next to what), sections and their order, every piece of text and every number, which button is primary, emphasis and sizes.
+Change: fix every difference so the real app matches the sketch. Keep anything the sketch doesn't show. If they already match, answer with nothing at all.`;
+}

@@ -50,6 +50,9 @@ const CHANGED: &str = "chatgpt-changed";
 const MAX_QUESTION: usize = 8000;
 /// A builder request carries the current design along with the change asked for.
 const MAX_BUILD_REQUEST: usize = 200_000;
+/// Screenshots per request (the sketch and the real app), and their size.
+const MAX_IMAGES: usize = 4;
+const MAX_IMAGE_BYTES: usize = 8 * 1024 * 1024;
 // Refresh a little early so a request never starts on a token about to lapse.
 const EXPIRY_MARGIN: Duration = Duration::from_secs(60);
 
@@ -793,9 +796,15 @@ impl ChatGptState {
         model: &str,
         instructions: Option<&str>,
         cache_key: Option<&str>,
+        images: &[String],
         send: impl FnMut(AskEvent),
     ) -> Result<()> {
         let question = question.trim();
+        // Screenshots the model looks at (data:image/png;base64,… only: the
+        // builder captures them itself, nothing is fetched from a URL).
+        if images.len() > MAX_IMAGES || images.iter().any(|i| !i.starts_with("data:image/png;base64,") || i.len() > MAX_IMAGE_BYTES) {
+            return Err("Those screenshots can't be sent.".into());
+        }
         let limit = if instructions.is_some() { MAX_BUILD_REQUEST } else { MAX_QUESTION };
         if question.is_empty() || question.len() > limit {
             return Err(format!("Ask a question of up to {limit} characters."));
@@ -806,7 +815,13 @@ impl ChatGptState {
         // without it.
         let mut body = json!({
             "model": model,
-            "input": [{ "role": "user", "content": question }],
+            "input": [{ "role": "user", "content": if images.is_empty() {
+                json!(question)
+            } else {
+                let mut parts = vec![json!({ "type": "input_text", "text": question })];
+                parts.extend(images.iter().map(|url| json!({ "type": "input_image", "image_url": url })));
+                json!(parts)
+            } }],
             "store": false,
             "stream": true,
             "reasoning": { "effort": "low" },
@@ -958,11 +973,12 @@ pub async fn chatgpt_ask(
     model: String,
     instructions: Option<String>,
     cache_key: Option<String>,
+    images: Option<Vec<String>>,
     on_event: Channel<AskEvent>,
 ) -> Result<()> {
     let state = Arc::clone(&state);
     tauri::async_runtime::spawn_blocking(move || {
-        state.ask(&question, &model, instructions.as_deref(), cache_key.as_deref(), |event| {
+        state.ask(&question, &model, instructions.as_deref(), cache_key.as_deref(), &images.unwrap_or_default(), |event| {
             let _ = on_event.send(event);
         })
     })

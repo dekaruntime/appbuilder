@@ -3,6 +3,7 @@ import { useEffect, useRef, useState } from 'react';
 import { loadRuntime, NativePreview } from '../lib/deka/runtime';
 import { WebGLRenderer, type NativeScene } from '../lib/deka/webgl';
 import { runtimeLabel } from '../lib/deka/plain';
+import { snapshots } from '../lib/snapshots';
 import type { ReactNode } from 'react';
 
 // The live app: DekaScript compiles, runs and lays out in deka's WASM VM, and
@@ -61,10 +62,13 @@ export default function DekaPreview({ source, width, height, zoom, reload = 0, o
       runtimeRef.current = new NativePreview();
       drawRef.current = draw;
       observer = new ResizeObserver(draw); observer.observe(canvas);
+      // A picture of the app: draw, then read the canvas in the same task
+      // (WebGL keeps the frame until it is shown).
+      snapshots.deka = async () => { draw(); try { return canvas.toDataURL('image/png'); } catch { return null; } };
       setReady(true);
     }).catch(cause => setFailure(String(cause)));
     return () => {
-      disposed = true; cancelAnimationFrame(frame); observer?.disconnect();
+      disposed = true; cancelAnimationFrame(frame); observer?.disconnect(); snapshots.deka = null;
       renderer?.dispose(); runtimeRef.current?.free(); runtimeRef.current = null; drawRef.current = null;
     };
   }, []);

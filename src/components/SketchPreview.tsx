@@ -1,6 +1,7 @@
 'use client';
 import { useEffect, useRef, useState } from 'react';
 import { compileInWorker } from '../lib/sketch/worker-client';
+import { snapshots } from '../lib/snapshots';
 
 // A sketch running as HTML: compiled in a worker, shown in a sandboxed iframe
 // with no same-origin access and a no-network CSP. Laid out at the window's
@@ -39,6 +40,27 @@ export default function SketchPreview({ sketch, width, height, zoom, reload = 0,
     }).catch(error => { if (live) setFailure(String(error instanceof Error ? error.message : error)); });
     return () => { live = false; };
   }, [sketch, reload]);
+
+  // Take a picture of the sketch: its runtime draws the page onto a canvas.
+  useEffect(() => {
+    let next = 0;
+    const waiting = new Map<number, (url: string | null) => void>();
+    const onResult = (event: MessageEvent) => {
+      if (event.source !== frame.current?.contentWindow || !event.data?.zegaSnapshotResult) return;
+      waiting.get(event.data.zegaSnapshotResult)?.(typeof event.data.url === 'string' && event.data.url.startsWith('data:image/png;base64,') ? event.data.url : null);
+      waiting.delete(event.data.zegaSnapshotResult);
+    };
+    addEventListener('message', onResult);
+    snapshots.sketch = () => new Promise(resolve => {
+      const win = frame.current?.contentWindow;
+      if (!win) { resolve(null); return; }
+      const id = ++next;
+      waiting.set(id, resolve);
+      setTimeout(() => { if (waiting.delete(id)) resolve(null); }, 5000);
+      win.postMessage({ zegaSnapshot: id }, '*');
+    });
+    return () => { removeEventListener('message', onResult); snapshots.sketch = null; };
+  }, []);
 
   useEffect(() => {
     const onMessage = (event: MessageEvent) => {

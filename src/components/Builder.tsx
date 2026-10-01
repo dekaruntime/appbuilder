@@ -9,13 +9,14 @@ import DesktopStage, { defaultDesktop, type DesktopTheme } from './DesktopStage'
 import TerminalPane, { type TerminalCommand } from './TerminalPane';
 import { IDEA_EVENT, PENDING_IDEA } from './IdeaRouter';
 import { openUsage, type AskEvent, type ChatGptView, type Model } from '../lib/chatgpt';
-import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
+import { DEKA_APP_INSTRUCTIONS, DEKA_EDIT_INSTRUCTIONS, agentsFile, appRequest, compareRequest, editRequest, extractSource, fixRequest } from '../lib/deka/guide';
 import { applySourceOp, jsonObjects, parseSourceOp } from '../lib/deka/edit';
 import { compileError } from '../lib/deka/runtime';
 import { compileSketch } from '../lib/sketch/compile';
 import { SKETCH_EDIT_INSTRUCTIONS, SKETCH_INSTRUCTIONS, extractSketch, realRequest, sketchEditRequest, sketchRequest } from '../lib/sketch/guide';
 import { problemsLabel, runtimeLabel } from '../lib/deka/plain';
 import { formatMs, formatTokens, reportTiming, useLastTiming, type Tokens } from '../lib/timing';
+import { snapshots } from '../lib/snapshots';
 import { HARNESSES, WINDOW_SIZES, readStartup, type Harness } from '../lib/builder-startup';
 import { newAppId } from '../lib/app-name';
 
@@ -26,10 +27,11 @@ type Made = { how: 'full' } | { how: 'rixse'; ops: number; missed: number } | { 
 // fixes: compile errors the model repaired on its own; error: one it couldn't.
 // sketch: the Markdown sketch a sketch version was made from (source is then
 // the DekaScript compiled from it).
-type Version = { n: number; ask: string; source: string; sketch?: string; basedOn: number | null; ms: number; tokens: Tokens | null; made: Made; fixes: number; error: string | null };
+// checks: rounds where the model compared the real app with the sketch.
+type Version = { n: number; ask: string; source: string; sketch?: string; basedOn: number | null; ms: number; tokens: Tokens | null; made: Made; fixes: number; error: string | null; checks?: number };
 // "thinking" until the first word of the answer arrives (reasoning models can
 // think for minutes), then "writing"; "fixing" while a compile error is repaired.
-type Building = { ask: string; basedOn: number | null; mode: Mode | 'fix'; ops: number; started: number; writing: boolean };
+type Building = { ask: string; basedOn: number | null; mode: Mode | 'fix'; ops: number; started: number; writing: boolean; checking?: boolean };
 type Done = Extract<AskEvent, { kind: 'completed' }>;
 
 const MAX_FIXES = 2;
@@ -284,7 +286,7 @@ export default function Builder() {
 
   // One request to ChatGPT; resolves with its completion, or null when it
   // failed or was stopped.
-  const request = async (question: string, instructions: string, onText: (text: string) => void): Promise<Done | null> => {
+  const request = async (question: string, instructions: string, onText: (text: string) => void, images: string[] = []): Promise<Done | null> => {
     if (stopped.current) return null;
     let done: Done | null = null;
     const channel = new Channel<AskEvent>();
@@ -296,7 +298,7 @@ export default function Builder() {
     };
     const halted = new Promise<'stopped'>(resolve => { stopWaiters.current.add(() => resolve('stopped')); });
     try {
-      const result = await Promise.race([invoke('chatgpt_ask', { question, model, instructions, cacheKey: session.current, onEvent: channel }), halted]);
+      const result = await Promise.race([invoke('chatgpt_ask', { question, model, instructions, cacheKey: session.current, images: images.length ? images : null, onEvent: channel }), halted]);
       if (result === 'stopped' || stopped.current) return null;
     } catch (reason) { if (!stopped.current) setFailure(String(reason)); return null; }
     return done;
@@ -320,7 +322,7 @@ export default function Builder() {
   // the source as they arrive, so the running app changes in place.
   // `show` turns the edited text into what the preview runs (a sketch compiles
   // to DekaScript first).
-  const rixsePass = async (question: string, base: string, instructions = DEKA_EDIT_INSTRUCTIONS, show = (text: string) => text) => {
+  const rixsePass = async (question: string, base: string, instructions = DEKA_EDIT_INSTRUCTIONS, show = (text: string) => text, images: string[] = []) => {
     let source = base;
     let buffer = '';
     let ops = 0, missed = 0, full = false;
@@ -340,7 +342,7 @@ export default function Builder() {
       setBuilding(state => state && { ...state, ops });
       const now = performance.now();
       if (now - lastDraw.current > PREVIEW_EVERY_MS) { lastDraw.current = now; setPreview(show(source)); }
-    });
+    }, images);
     return done && { source, done, ops, missed, full };
   };
 
@@ -435,6 +437,8 @@ export default function Builder() {
     const base = current;
     if (!base?.sketch || !model || building) return;
     stopped.current = false;
+    // The sketch is on screen now: take its picture before building.
+    const sketchShot = await snapshots.sketch?.() ?? null;
     const n = versions.length + 1;
     const ask = 'Make it real';
     setFailure(null); setPreview(''); setPreviewIsSketch(false);
@@ -459,6 +463,30 @@ export default function Builder() {
       }
       setVersions(list => [...list, { n, ask, basedOn: base.n, source, ms, tokens, made: { how: 'full' }, fixes, error }]);
       setShown(n);
+      // Compare: the model sees the sketch and the real app side by side and
+      // fixes what differs, up to twice, until they match.
+      let checks = 0;
+      while (sketchShot && !error && checks < 2 && !stopped.current) {
+        await new Promise(r => setTimeout(r, 900)); // let the preview draw the new version
+        const realShot = await snapshots.deka?.() ?? null;
+        if (!realShot) break;
+        setBuilding(state => state && { ...state, mode: 'fix', ops: 0, writing: false, checking: true });
+        const compared = await rixsePass(compareRequest(source), source, DEKA_EDIT_INSTRUCTIONS, t => t, [sketchShot, realShot]);
+        if (!compared || stopped.current) break;
+        checks += 1; ms += compared.done.elapsed_ms; tokens = addTokens(tokens, compared.done.tokens);
+        if (!compared.ops) break;
+        let next = compared.source;
+        let nextError = await compileError(next);
+        if (nextError) {
+          const fixed = await rixsePass(fixRequest(nextError, next), next);
+          if (fixed) { next = fixed.source; nextError = await compileError(next); ms += fixed.done.elapsed_ms; tokens = addTokens(tokens, fixed.done.tokens); }
+        }
+        if (nextError) break; // keep the last version that compiled
+        source = next;
+        const finalSource = source, finalMs = ms, finalTokens = tokens, finalChecks = checks;
+        setVersions(list => list.map(v => v.n === n ? { ...v, source: finalSource, ms: finalMs, tokens: finalTokens, checks: finalChecks } : v));
+      }
+      if (checks) { const c = checks, t = tokens, m = ms; setVersions(list => list.map(v => v.n === n ? { ...v, checks: c, tokens: t, ms: m } : v)); }
       reportTiming({ label: 'Built', ms, tokens });
     } finally {
       setBuilding(null);
@@ -523,7 +551,7 @@ export default function Builder() {
   const stopRef = useRef(stop);
   stopRef.current = stop;
 
-  const status = (b: Building) => b.mode === 'fix' ? `Fixing a compile error in v${versions.length + 1} · ${elapsed(b.started)}${b.writing ? ` · ${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : ''}…`
+  const status = (b: Building) => b.checking ? `Comparing the app with the sketch · ${elapsed(b.started)}…` : b.mode === 'fix' ? `Fixing a compile error in v${versions.length + 1} · ${elapsed(b.started)}${b.writing ? ` · ${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : ''}…`
     : `${b.mode === 'rixse' ? 'Editing' : 'Building'} v${versions.length + 1}${b.basedOn ? ` from v${b.basedOn}` : ''} · ${elapsed(b.started)} · ${b.writing ? (b.mode === 'rixse' ? `${b.ops} ${b.ops === 1 ? 'op' : 'ops'}` : 'writing') : 'thinking'}…`;
 
   const chat = !view ? null : !signedIn ? <div className="bchat-empty">
@@ -542,7 +570,7 @@ export default function Builder() {
       {versions.map(v => <div key={v.n} className="bmsg">
         <p className="bmsg-ask">{v.ask}</p>
         <button type="button" className="bmsg-done" aria-pressed={shown === v.n} onClick={() => setShown(v.n)}>
-          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.sketch ? (v.basedOn ? `sketch · ${madeLabel(v.made)}` : 'sketch') : v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}{v.fixes ? ` · fixed ${v.fixes} ${v.fixes === 1 ? 'problem' : 'problems'}` : ''}
+          <b>v{v.n}</b>{v.basedOn ? ` from v${v.basedOn}` : ''} · {v.sketch ? (v.basedOn ? `sketch · ${madeLabel(v.made)}` : 'sketch') : v.basedOn ? madeLabel(v.made) : 'first build'} · {formatMs(v.ms)}{v.tokens ? ` · ${formatTokens(v.tokens)}` : ''}{v.fixes ? ` · fixed ${v.fixes} ${v.fixes === 1 ? 'problem' : 'problems'}` : ''}{v.checks ? ` · checked against the sketch ×${v.checks}` : ''}
         </button>
         {v.sketch && <details className="bmsg-sketch"><summary>View the sketch</summary><pre>{v.sketch}</pre></details>}
         {v.error && <div className="bmsg-error" role="alert">

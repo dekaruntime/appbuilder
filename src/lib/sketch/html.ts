@@ -162,5 +162,6 @@ function documentFor(spec: Record<string, unknown>): string {
 <link rel="stylesheet" href="/sketch/frame.css">
 </head><body><div id="app"></div>
 <script type="application/json" id="spec">${embed(spec)}</script>
+<script src="/sketch/html2canvas.min.js"></script>
 <script src="/sketch/runtime.js"></script></body></html>`;
 }
