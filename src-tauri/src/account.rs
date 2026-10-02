@@ -16,10 +16,10 @@ use tauri_plugin_opener::OpenerExt;
 use zeroize::Zeroizing;
 
 // zegadb/id's canonical host (its wrangler.jsonc custom_domain; legacy
-// id.zega.dev only 301s there — id.zega.earth is not attached to the
-// worker). Its /auth/desktop, /auth/desktop/token, /auth/me and
-// /auth/signout routes are the other half of this contract.
-pub const IDENTITY_ORIGIN: &str = "https://account.zega.earth";
+// id.zega.dev and account.zega.earth only 301 there — neither is attached
+// to the worker as itself). Its /auth/desktop, /auth/desktop/token,
+// /auth/me and /auth/signout routes are the other half of this contract.
+pub const IDENTITY_ORIGIN: &str = "https://account.zega.dev";
 // Earth API origin. No authenticated API calls yet; reserved for when the
 // shell fetches account-scoped site data.
 const KEYCHAIN: Keychain = Keychain {

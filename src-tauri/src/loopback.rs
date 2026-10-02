@@ -212,7 +212,7 @@ fn zega_code(query: &Query) -> Result<Zeroizing<String>> {
 pub struct Completion(TcpStream);
 
 impl Completion {
-    /// zega identity's pages: the tab lands on account.zega.earth.
+    /// zega identity's pages: the tab lands on account.zega.dev.
     pub fn respond(self, success: bool) {
         let location = if success {
             format!("Location: {IDENTITY_ORIGIN}/auth/desktop/done\r\n")

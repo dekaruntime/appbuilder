@@ -35,7 +35,7 @@ test('desktop auth uses the loopback account commands', () => {
   const loopback = readFileSync('src-tauri/src/loopback.rs', 'utf8');
   assert.match(auth, /invoke\('account_start'\)/);
   assert.match(auth, /invoke\('account_status'\)/);
-  assert.match(native, /https:\/\/account\.zega\.earth/);
+  assert.match(native, /https:\/\/account\.zega\.dev/);
   assert.match(loopback, /challenge/);
   assert.match(native, /earth\.zega\.desktop/);
 });
